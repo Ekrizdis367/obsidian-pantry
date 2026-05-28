@@ -223,9 +223,9 @@ export default class PantryPlugin extends Plugin {
 		const cache = this.app.metadataCache.getFileCache(file);
 		const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
 		const typeValue = fm[RECIPE_FRONTMATTER.type];
-		const target = this.settings.recipeTypeValue.trim().toLowerCase();
-		if (typeof typeValue !== "string") return;
-		if (typeValue.trim().toLowerCase() !== target) return;
+		const target = normalizeRecipeTypeToken(this.settings.recipeTypeValue);
+		if (!target) return;
+		if (!frontmatterTypeMatches(typeValue, target)) return;
 
 		const leaf = this.app.workspace.getMostRecentLeaf();
 		if (!leaf) return;
@@ -237,6 +237,44 @@ export default class PantryPlugin extends Plugin {
 			active: true,
 		});
 	}
+}
+
+
+/**
+ * Normalizes a recipe type token by trimming whitespace, converting to lowercase,
+ * and handling special Obsidian link syntax ([[...]]). This ensures consistent
+ * comparison of recipe types.
+ */
+function normalizeRecipeTypeToken(value: string): string {
+	const trimmed = value.trim();
+	if (!trimmed) return "";
+
+	if (trimmed.startsWith("[[") && trimmed.endsWith("]]")) {
+		const inner = trimmed.slice(2, -2).trim();
+		const pipeIndex = inner.indexOf("|");
+		const hashIndex = inner.indexOf("#");
+		let cutoff = inner.length;
+		if (pipeIndex >= 0) cutoff = Math.min(cutoff, pipeIndex);
+		if (hashIndex >= 0) cutoff = Math.min(cutoff, hashIndex);
+		return inner.slice(0, cutoff).trim().toLowerCase();
+	}
+
+	return trimmed.toLowerCase();
+}
+
+function frontmatterTypeMatches(value: unknown, target: string): boolean {
+	if (typeof value === "string") {
+		return normalizeRecipeTypeToken(value) === target;
+	}
+
+	if (Array.isArray(value)) {
+		return value.some((item) => {
+			if (typeof item !== "string") return false;
+			return normalizeRecipeTypeToken(item) === target;
+		});
+	}
+
+	return false;
 }
 
 function makeSaveSink(plugin: PantryPlugin): SaveSink {
@@ -291,6 +329,24 @@ function mergeSettings(
 			typeof raw.recipeTypeValue === "string" && raw.recipeTypeValue.trim()
 				? raw.recipeTypeValue.trim()
 				: base.recipeTypeValue,
+		nutritionDisplay:
+			raw.nutritionDisplay === "per-serving" ||
+			raw.nutritionDisplay === "total"
+				? raw.nutritionDisplay
+				: base.nutritionDisplay,
+		nutritionSource:
+			raw.nutritionSource === "recipe-total" ||
+			raw.nutritionSource === "per-serving"
+				? raw.nutritionSource
+				: base.nutritionSource,
+		showMarkCookedButton:
+			typeof raw.showMarkCookedButton === "boolean"
+				? raw.showMarkCookedButton
+				: base.showMarkCookedButton,
+		markCookedAskDate:
+			typeof raw.markCookedAskDate === "boolean"
+				? raw.markCookedAskDate
+				: base.markCookedAskDate,
 		state: {
 			oneOffs: Array.isArray(raw.state?.oneOffs)
 				? (raw.state?.oneOffs ?? [])
