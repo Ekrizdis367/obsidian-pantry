@@ -2,7 +2,34 @@ import { App, CachedMetadata, TFile } from "obsidian";
 import { PantrySettings, RECIPE_FRONTMATTER } from "../settings";
 import { listMarkdownFilesInRecipeFolders } from "../utils/vault-files";
 import { RecipeIngredient } from "../types";
+import { stripWikiLink } from "../utils/text";
 import { hasIgnoreTag, parseIngredientLine } from "./ingredient";
+
+/**
+ * Does a note's recipe-type frontmatter value match the configured target?
+ *
+ * Matching is case-insensitive and tolerant of how Obsidian stores the value:
+ * a plain string, a wikilink (`[[Recipes]]`), or a list mixing either. Each
+ * candidate is unwrapped via {@link stripWikiLink} before comparison so a note
+ * with `type: [[Recipes]]` matches a configured value of `Recipes`.
+ */
+export function recipeTypeMatches(fmValue: unknown, target: string): boolean {
+	const wanted = target.trim().toLowerCase();
+	if (!wanted) return false;
+
+	const candidates: string[] = [];
+	if (typeof fmValue === "string") {
+		candidates.push(fmValue);
+	} else if (Array.isArray(fmValue)) {
+		for (const entry of fmValue) {
+			if (typeof entry === "string") candidates.push(entry);
+		}
+	}
+
+	return candidates.some(
+		(candidate) => stripWikiLink(candidate).toLowerCase() === wanted,
+	);
+}
 
 /** Returns true if the file lives inside one of the configured folders (or all are empty). */
 export function fileInRecipeFolders(file: TFile, folders: string[]): boolean {

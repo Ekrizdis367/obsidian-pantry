@@ -22,6 +22,7 @@ import { toTitleCase } from "../utils/text";
 import { AddOneOffModal } from "./add-item-modal";
 import { ConfirmModal } from "./confirm-modal";
 import { ExportListModal } from "./export-modal";
+import { MealPlanPickerModal } from "./meal-plan-picker";
 
 export const VIEW_TYPE_GROCERY_LIST = "pantry-grocery-list";
 
@@ -103,6 +104,18 @@ export class GroceryListView extends ItemView {
 			this.openGroupingMenu(evt);
 		});
 
+		this.makeIconButton(
+			actionsEl,
+			"calendar-days",
+			"Import meal plan into shopping list",
+			() => {
+				new MealPlanPickerModal(
+					this.app,
+					this.deps.manager,
+				).open();
+			},
+		);
+
 		this.makeIconButton(actionsEl, "share", "Export grocery list", () => {
 			new ExportListModal(this.app, {
 				getSettings: this.deps.getSettings,
@@ -182,10 +195,11 @@ export class GroceryListView extends ItemView {
 		this.listEl.empty();
 		const items = this.deps.manager.getItems();
 		const oneOffs = this.deps.manager.getOneOffs();
-		const recipes = this.deps.manager.getSelectedRecipes();
+		const individual = this.deps.manager.getIndividualRecipes();
+		const planned = this.deps.manager.getPlannedRecipes();
 
 		this.renderSummary(items, oneOffs);
-		this.renderRecipes(recipes);
+		this.renderRecipeSections(individual, planned);
 
 		if (items.length === 0) {
 			const empty = this.listEl.createDiv({ cls: "pantry-empty" });
@@ -194,7 +208,7 @@ export class GroceryListView extends ItemView {
 			});
 			empty.createEl("p", {
 				cls: "pantry-hint",
-				text: "Mark a recipe note with the selection property and refresh, or add a one-off item.",
+				text: "Mark a recipe with the selection property, add recipes from the meal planner, or add a one-off item.",
 			});
 			return;
 		}
@@ -266,21 +280,48 @@ export class GroceryListView extends ItemView {
 		});
 	}
 
-	private renderRecipes(recipes: TFile[]): void {
+	private renderRecipeSections(
+		individual: TFile[],
+		planned: Array<{ file: TFile; count: number }>,
+	): void {
 		this.recipesEl.empty();
-		if (recipes.length === 0) return;
+		if (individual.length === 0 && planned.length === 0) return;
 
+		if (planned.length > 0) {
+			this.renderRecipeGroup(
+				"Meal plan",
+				planned.map((entry) => ({
+					file: entry.file,
+					planCount: entry.count,
+				})),
+			);
+		}
+		if (individual.length > 0) {
+			this.renderRecipeGroup(
+				"Selected",
+				individual.map((file) => ({ file })),
+			);
+		}
+	}
+
+	private renderRecipeGroup(
+		title: string,
+		entries: Array<{ file: TFile; planCount?: number }>,
+	): void {
 		const settings = this.deps.getSettings();
-
-		this.recipesEl.createDiv({
-			cls: "pantry-recipes-header",
-			text: `Recipes (${recipes.length})`,
+		const section = this.recipesEl.createDiv({
+			cls: "pantry-recipes-section",
 		});
 
-		const ul = this.recipesEl.createEl("ul", {
+		section.createDiv({
+			cls: "pantry-recipes-header",
+			text: `${title} (${entries.length})`,
+		});
+
+		const ul = section.createEl("ul", {
 			cls: "pantry-recipes-list",
 		});
-		for (const file of recipes) {
+		for (const { file, planCount } of entries) {
 			const li = ul.createEl("li", { cls: "pantry-recipe" });
 			const link = li.createEl("a", {
 				cls: "pantry-recipe-link",
@@ -316,6 +357,14 @@ export class GroceryListView extends ItemView {
 					"aria-label",
 					`Allergen warning: contains ${matches.join(", ")}`,
 				);
+			}
+
+			if (planCount !== undefined && planCount > 1) {
+				li.createSpan({
+					cls: "pantry-recipe-plan-count",
+					text: `×${planCount}`,
+					attr: { title: `${planCount} slots in the meal plan` },
+				});
 			}
 
 			const multiplier = readRecipeMultiplier(cache);
@@ -363,7 +412,7 @@ export class GroceryListView extends ItemView {
 		}
 
 		const meta = body.createDiv({ cls: "pantry-meta" });
-		const sourceLabels = item.sources.map((s) => s.label).join(", ");
+		const sourceLabels = item.sources.map((s) => s.label).join(" | ");
 		if (sourceLabels) {
 			meta.createSpan({
 				cls: "pantry-source",

@@ -8,13 +8,14 @@ import {
 } from "obsidian";
 import { registerCommands } from "./commands";
 import { GroceryListManager, SaveSink } from "./grocery/manager";
+import { recipeTypeMatches } from "./parser/recipe";
 import {
 	DEFAULT_CATEGORY_ORDER,
 	DEFAULT_SETTINGS,
 	PantrySettings,
-	RECIPE_FRONTMATTER,
 } from "./settings";
 import { PantrySettingsTab } from "./ui/settings-tab";
+import { MealPlannerView, VIEW_TYPE_MEAL_PLANNER } from "./ui/planner-view";
 import { RecipeView, VIEW_TYPE_RECIPE } from "./ui/recipe-view";
 import { GroceryListView, VIEW_TYPE_GROCERY_LIST } from "./ui/view";
 
@@ -39,6 +40,16 @@ export default class PantryPlugin extends Plugin {
 		);
 
 		this.registerView(
+			VIEW_TYPE_MEAL_PLANNER,
+			(leaf) =>
+				new MealPlannerView(leaf, {
+					manager: this.manager,
+					getSettings: () => this.settings,
+					saveSettings: () => this.saveSettings(),
+				}),
+		);
+
+		this.registerView(
 			VIEW_TYPE_RECIPE,
 			(leaf) =>
 				new RecipeView(leaf, {
@@ -54,12 +65,17 @@ export default class PantryPlugin extends Plugin {
 			void this.activateView();
 		});
 
+		this.addRibbonIcon("calendar-days", "Open meal planner", () => {
+			void this.activatePlannerView();
+		});
+
 		registerCommands({
 			plugin: this,
 			manager: this.manager,
 			settings: this.settings,
 			saveSettings: () => this.saveSettings(),
 			openView: () => this.activateView(),
+			openMealPlanner: () => this.activatePlannerView(),
 			openCurrentAsRecipe: () => this.openCurrentAsRecipe(),
 			openCurrentAsMarkdown: () => this.openCurrentAsMarkdown(),
 		});
@@ -147,6 +163,24 @@ export default class PantryPlugin extends Plugin {
 		}
 	}
 
+	async activatePlannerView(): Promise<void> {
+		const { workspace } = this.app;
+		let leaf: WorkspaceLeaf | null = null;
+		const existing = workspace.getLeavesOfType(VIEW_TYPE_MEAL_PLANNER);
+		if (existing.length > 0) {
+			leaf = existing[0] ?? null;
+		} else {
+			leaf = workspace.getLeaf("tab");
+			await leaf.setViewState({
+				type: VIEW_TYPE_MEAL_PLANNER,
+				active: true,
+			});
+		}
+		if (leaf) {
+			await workspace.revealLeaf(leaf);
+		}
+	}
+
 	/**
 	 * Switch the active leaf to the recipe view, if it currently holds a
 	 * markdown file. No-op when the active item isn't a markdown file.
@@ -222,10 +256,10 @@ export default class PantryPlugin extends Plugin {
 
 		const cache = this.app.metadataCache.getFileCache(file);
 		const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
-		const typeValue = fm[RECIPE_FRONTMATTER.type];
-		const target = this.settings.recipeTypeValue.trim().toLowerCase();
-		if (typeof typeValue !== "string") return;
-		if (typeValue.trim().toLowerCase() !== target) return;
+		const property = this.settings.recipeTypeProperty.trim() || "type";
+		if (!recipeTypeMatches(fm[property], this.settings.recipeTypeValue)) {
+			return;
+		}
 
 		const leaf = this.app.workspace.getMostRecentLeaf();
 		if (!leaf) return;
@@ -287,6 +321,15 @@ function mergeSettings(
 			typeof raw.autoOpenRecipeView === "boolean"
 				? raw.autoOpenRecipeView
 				: base.autoOpenRecipeView,
+		suppressInlineRecipeImage:
+			typeof raw.suppressInlineRecipeImage === "boolean"
+				? raw.suppressInlineRecipeImage
+				: base.suppressInlineRecipeImage,
+		recipeTypeProperty:
+			typeof raw.recipeTypeProperty === "string" &&
+			raw.recipeTypeProperty.trim()
+				? raw.recipeTypeProperty.trim()
+				: base.recipeTypeProperty,
 		recipeTypeValue:
 			typeof raw.recipeTypeValue === "string" && raw.recipeTypeValue.trim()
 				? raw.recipeTypeValue.trim()
@@ -344,6 +387,30 @@ function mergeSettings(
 			typeof raw.giDictionary === "string"
 				? raw.giDictionary
 				: base.giDictionary,
+		mealPlanEnabled:
+			typeof raw.mealPlanEnabled === "boolean"
+				? raw.mealPlanEnabled
+				: base.mealPlanEnabled,
+		mealPlanNotePath:
+			typeof raw.mealPlanNotePath === "string"
+				? raw.mealPlanNotePath.trim()
+				: base.mealPlanNotePath,
+		mealPlanIncludeSnacks:
+			typeof raw.mealPlanIncludeSnacks === "boolean"
+				? raw.mealPlanIncludeSnacks
+				: base.mealPlanIncludeSnacks,
+		mealPlanIncludeWeekend:
+			typeof raw.mealPlanIncludeWeekend === "boolean"
+				? raw.mealPlanIncludeWeekend
+				: base.mealPlanIncludeWeekend,
+		importFolder:
+			typeof raw.importFolder === "string"
+				? raw.importFolder.trim()
+				: base.importFolder,
+		importTemplatePath:
+			typeof raw.importTemplatePath === "string"
+				? raw.importTemplatePath.trim()
+				: base.importTemplatePath,
 	};
 	return merged;
 }

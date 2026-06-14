@@ -149,7 +149,12 @@ export class RecipeView extends TextFileView {
 			frontmatter[settings.selectionProperty],
 		);
 
-		const body = stripFrontmatter(this.data);
+		const frontmatterImage = readStringFromKeys(frontmatter, IMAGE_KEYS);
+		const rawBody = stripFrontmatter(this.data);
+		const body =
+			settings.suppressInlineRecipeImage && frontmatterImage
+				? this.suppressMatchingInlineImage(rawBody, frontmatterImage, file)
+				: rawBody;
 		const split = splitBodyAroundIngredients(
 			body,
 			settings.ingredientsHeading,
@@ -327,6 +332,38 @@ export class RecipeView extends TextFileView {
 		});
 	}
 
+	private suppressMatchingInlineImage(
+		body: string,
+		frontmatterImage: string,
+		file: TFile,
+	): string {
+		const lines = body.split(/\r?\n/);
+		let suppressed = false;
+
+		for (let i = 0; i < lines.length; i++) {
+			if (suppressed) break;
+			const line = lines[i] ?? "";
+			IMAGE_EMBED_PATTERN.lastIndex = 0;
+			const updated = line.replace(
+				IMAGE_EMBED_PATTERN,
+				(match, wikilink: string | undefined, markdownTarget: string | undefined) => {
+					if (suppressed) return match;
+					const target = wikilink
+						? cleanWikiImageTarget(wikilink)
+						: cleanMarkdownImageTarget(markdownTarget);
+					if (!target || !this.imageRefsMatch(frontmatterImage, target, file)) {
+						return match;
+					}
+					suppressed = true;
+					return "";
+				},
+			);
+			lines[i] = updated;
+		}
+
+		return lines.join("\n");
+	}
+
 	private resolveImage(value: string, file: TFile): string | null {
 		const trimmed = value.trim();
 		if (!trimmed) return null;
@@ -350,6 +387,30 @@ export class RecipeView extends TextFileView {
 			return this.app.vault.getResourcePath(direct);
 		}
 		return null;
+	}
+
+	private imageRefsMatch(left: string, right: string, file: TFile): boolean {
+		const leftFile = this.resolveImageFile(left, file);
+		const rightFile = this.resolveImageFile(right, file);
+		if (leftFile && rightFile) return leftFile.path === rightFile.path;
+
+		return normalizeImageTarget(left) === normalizeImageTarget(right);
+	}
+
+	private resolveImageFile(value: string, file: TFile): TFile | null {
+		const target = extractImageTarget(value);
+		if (!target || /^(https?:|data:|app:|capacitor:)/i.test(target)) {
+			return null;
+		}
+
+		const linked = this.app.metadataCache.getFirstLinkpathDest(
+			target,
+			file.path,
+		);
+		if (linked) return linked;
+
+		const direct = this.app.vault.getAbstractFileByPath(target);
+		return direct instanceof TFile ? direct : null;
 	}
 
 	private renderTitle(
@@ -807,6 +868,59 @@ export class RecipeView extends TextFileView {
 }
 
 const IMAGE_KEYS = [RECIPE_FRONTMATTER.image] as const;
+const IMAGE_EMBED_PATTERN = /!\[\[([^\]]+)\]\]|!\[[^\]]*\]\(([^)]*)\)/g;
+
+function extractImageTarget(value: string): string | null {
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+
+	const wikilink = trimmed.match(/^!?\[\[([^\]]+)\]\]$/);
+	if (wikilink) {
+		return cleanWikiImageTarget(wikilink[1]);
+	}
+
+	const markdownImage = trimmed.match(/^!\[[^\]]*]\(([^)]*)\)$/);
+	if (markdownImage) {
+		return cleanMarkdownImageTarget(markdownImage[1]);
+	}
+
+	return cleanMarkdownImageTarget(trimmed);
+}
+
+function cleanWikiImageTarget(raw: string | undefined): string | null {
+	if (!raw) return null;
+	let target = raw.trim();
+	const pipe = target.indexOf("|");
+	if (pipe >= 0) target = target.slice(0, pipe);
+	const hash = target.indexOf("#");
+	if (hash >= 0) target = target.slice(0, hash);
+	target = target.trim();
+	return target || null;
+}
+
+function cleanMarkdownImageTarget(raw: string | undefined): string | null {
+	if (!raw) return null;
+	let target = raw.trim();
+	if (!target) return null;
+
+	if (target.startsWith("<")) {
+		const close = target.indexOf(">");
+		if (close > 0) {
+			target = target.slice(1, close);
+		}
+	} else {
+		target = target.split(/\s+(?=["'])/)[0] ?? target;
+	}
+
+	const hash = target.indexOf("#");
+	if (hash >= 0) target = target.slice(0, hash);
+	target = target.trim();
+	return target || null;
+}
+
+function normalizeImageTarget(value: string): string {
+	return (extractImageTarget(value) ?? value.trim()).toLowerCase();
+}
 
 /**
  * Looks up a string value in a frontmatter object trying several keys

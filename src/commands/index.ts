@@ -5,7 +5,13 @@ import { isRecipeSelected } from "../parser/recipe";
 import { PantrySettings } from "../settings";
 import { AddOneOffModal } from "../ui/add-item-modal";
 import { ExportListModal } from "../ui/export-modal";
+import { ImportRecipeModal } from "../ui/import-recipe-modal";
+import { ImportTextModal } from "../ui/import-text-modal";
 import { LeaderboardModal } from "../ui/leaderboard-modal";
+import {
+	importMealPlanNote,
+	MealPlanPickerModal,
+} from "../ui/meal-plan-picker";
 import { SuggestMealModal } from "../ui/suggest-modal";
 
 export interface CommandsHost {
@@ -14,6 +20,7 @@ export interface CommandsHost {
 	settings: PantrySettings;
 	saveSettings(): Promise<void>;
 	openView(): Promise<void>;
+	openMealPlanner(): Promise<void>;
 	openCurrentAsRecipe(): Promise<void>;
 	openCurrentAsMarkdown(): Promise<void>;
 }
@@ -60,6 +67,27 @@ export function registerCommands(host: CommandsHost): void {
 		name: "Add one-off grocery item",
 		callback: () => {
 			new AddOneOffModal(plugin.app, manager).open();
+		},
+	});
+
+	plugin.addCommand({
+		id: "open-meal-planner",
+		name: "Open meal planner",
+		callback: () => {
+			void host.openMealPlanner();
+		},
+	});
+
+	plugin.addCommand({
+		id: "import-meal-plan",
+		name: "Import meal plan into shopping list",
+		callback: () => {
+			const file = plugin.app.workspace.getActiveFile();
+			if (file instanceof TFile && file.extension === "md") {
+				void importMealPlanNote(manager, file);
+			} else {
+				new MealPlanPickerModal(plugin.app, manager).open();
+			}
 		},
 	});
 
@@ -133,6 +161,26 @@ export function registerCommands(host: CommandsHost): void {
 			new ExportListModal(plugin.app, {
 				getSettings: () => host.settings,
 				manager,
+			}).open();
+		},
+	});
+
+	plugin.addCommand({
+		id: "import-recipe",
+		name: "Import recipe from URL",
+		callback: () => {
+			new ImportRecipeModal(plugin.app, {
+				getSettings: () => host.settings,
+			}).open();
+		},
+	});
+
+	plugin.addCommand({
+		id: "import-recipe-text",
+		name: "Import recipe from text",
+		callback: () => {
+			new ImportTextModal(plugin.app, {
+				getSettings: () => host.settings,
 			}).open();
 		},
 	});

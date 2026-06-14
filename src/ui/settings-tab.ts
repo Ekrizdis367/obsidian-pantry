@@ -14,6 +14,7 @@ import {
 	DEFAULT_CATEGORY_ORDER,
 	PantrySettings,
 } from "../settings";
+import { RECIPE_TEMPLATE_TOKEN_HINT } from "../importer/default-template";
 
 export interface SettingsHost {
 	app: App;
@@ -129,7 +130,7 @@ export class PantrySettingsTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Auto-open recipe view")
 			.setDesc(
-				"Open notes whose `type` matches the value below in the recipe view automatically.",
+				"Open notes whose recipe type matches the property and value below in the recipe view automatically.",
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -141,9 +142,25 @@ export class PantrySettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Recipe `type` value")
+			.setName("Recipe type property")
 			.setDesc(
-				"A note opens in the recipe view when its frontmatter `type` matches this value (case-insensitive).",
+				"The frontmatter property name checked to identify a recipe note (e.g. `type`, `category`, `kind`).",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("Type")
+					.setValue(this.host.settings.recipeTypeProperty)
+					.onChange(async (value) => {
+						this.host.settings.recipeTypeProperty =
+							value.trim() || "type";
+						await this.host.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Recipe type value")
+			.setDesc(
+				"A note opens in the recipe view when the property above matches this value (case-insensitive). Wikilink values like `[[Recipes]]` are matched against their note name.",
 			)
 			.addText((text) =>
 				text
@@ -152,6 +169,20 @@ export class PantrySettingsTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.host.settings.recipeTypeValue =
 							value.trim() || "recipe";
+						await this.host.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Suppress duplicate inline image")
+			.setDesc(
+				"When image frontmatter is set, hide the first matching image embedded in the recipe body.",
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.host.settings.suppressInlineRecipeImage)
+					.onChange(async (value) => {
+						this.host.settings.suppressInlineRecipeImage = value;
 						await this.host.saveSettings();
 					}),
 			);
@@ -219,6 +250,38 @@ export class PantrySettingsTab extends PluginSettingTab {
 					}),
 			);
 
+		new Setting(containerEl).setName("Recipe import").setHeading();
+
+		new Setting(containerEl)
+			.setName("Import folder")
+			.setDesc(
+				"Default vault-relative folder for recipes imported from a URL. Leave blank to use the first recipe folder above.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("Recipes")
+					.setValue(this.host.settings.importFolder)
+					.onChange(async (value) => {
+						this.host.settings.importFolder = value.trim();
+						await this.host.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Import template note")
+			.setDesc(
+				`Optional vault note used as the import template. Leave blank for the built-in Pantry template. Tokens: ${RECIPE_TEMPLATE_TOKEN_HINT}.`,
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("Templates/Pantry recipe.md")
+					.setValue(this.host.settings.importTemplatePath)
+					.onChange(async (value) => {
+						this.host.settings.importTemplatePath = value.trim();
+						await this.host.saveSettings();
+					}),
+			);
+
 		new Setting(containerEl).setName("Recipe library").setHeading();
 
 		new Setting(containerEl)
@@ -273,6 +336,68 @@ export class PantrySettingsTab extends PluginSettingTab {
 								Math.round(n);
 							await this.host.saveSettings();
 						}
+					}),
+			);
+
+		new Setting(containerEl).setName("Meal planning").setHeading();
+
+		new Setting(containerEl)
+			.setName("Auto-sync meal plan to the shopping list")
+			.setDesc(
+				"When on, the meal-plan note continuously contributes its linked recipes to the grocery list as you edit the planner. A recipe listed multiple times is counted once per appearance. Off by default — use the add-to-grocery-list button in the planner for a one-time add instead. Clearing the list turns this back off.",
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.host.settings.mealPlanEnabled)
+					.onChange(async (value) => {
+						this.host.settings.mealPlanEnabled = value;
+						await this.host.saveSettings();
+						await this.host.manager.refresh();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Meal plan note")
+			.setDesc(
+				"Vault-relative path of the note the planner reads and writes. The planner creates it if it doesn't exist.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("Meal-plan.md")
+					.setValue(this.host.settings.mealPlanNotePath)
+					.onChange(async (value) => {
+						this.host.settings.mealPlanNotePath = value.trim();
+						await this.host.saveSettings();
+						await this.host.manager.refresh();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Include a snacks slot")
+			.setDesc(
+				"Add a fourth snacks slot to each day in the planner, alongside breakfast, lunch, and dinner.",
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.host.settings.mealPlanIncludeSnacks)
+					.onChange(async (value) => {
+						this.host.settings.mealPlanIncludeSnacks = value;
+						await this.host.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Include weekend days")
+			.setDesc(
+				// eslint-disable-next-line obsidianmd/ui/sentence-case -- weekday names are proper nouns
+				"Show Saturday and Sunday in the planner. Off by default — the planner covers Monday through Friday.",
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.host.settings.mealPlanIncludeWeekend)
+					.onChange(async (value) => {
+						this.host.settings.mealPlanIncludeWeekend = value;
+						await this.host.saveSettings();
 					}),
 			);
 

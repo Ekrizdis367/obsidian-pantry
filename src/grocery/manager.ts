@@ -8,6 +8,10 @@ import {
 	findSelectedRecipes,
 	parseRecipeFile,
 } from "../parser/recipe";
+import {
+	parseMealPlanContents,
+	PlanOccurrence,
+} from "../parser/meal-plan";
 import { PantrySettings } from "../settings";
 import { GroceryItem, OneOffItem, RecipeIngredient } from "../types";
 import { buildGroceryList, groupForDisplay } from "./aggregator";
@@ -15,6 +19,13 @@ import { buildGroceryList, groupForDisplay } from "./aggregator";
 export interface SaveSink {
 	readonly settings: PantrySettings;
 	save(): Promise<void>;
+}
+
+/** A recipe contributing to the list via the live meal-plan source. */
+export interface PlannedRecipeEntry {
+	file: TFile;
+	/** How many slots in the plan reference this recipe. */
+	count: number;
 }
 
 /**
@@ -25,7 +36,8 @@ export interface SaveSink {
 export class GroceryListManager extends Events {
 	private items: GroceryItem[] = [];
 	private recipeIngredients: RecipeIngredient[] = [];
-	private selectedRecipes: TFile[] = [];
+	private individualRecipes: TFile[] = [];
+	private plannedRecipes: PlannedRecipeEntry[] = [];
 	private rebuildPromise: Promise<void> | null = null;
 
 	constructor(
@@ -43,9 +55,14 @@ export class GroceryListManager extends Events {
 		return this.sink.settings.state.oneOffs;
 	}
 
-	/** Markdown files currently flagged with the selection property, sorted by name. */
-	getSelectedRecipes(): TFile[] {
-		return this.selectedRecipes;
+	/** Recipes flagged via the selection property (excluding live meal-plan entries). */
+	getIndividualRecipes(): TFile[] {
+		return this.individualRecipes;
+	}
+
+	/** Recipes currently contributed by the live meal-plan source. */
+	getPlannedRecipes(): PlannedRecipeEntry[] {
+		return this.plannedRecipes;
 	}
 
 	/**
@@ -56,16 +73,49 @@ export class GroceryListManager extends Events {
 		if (this.rebuildPromise) return this.rebuildPromise;
 		this.rebuildPromise = (async () => {
 			try {
-				const files = findSelectedRecipes(this.app, this.sink.settings);
+				const fmFiles = findSelectedRecipes(
+					this.app,
+					this.sink.settings,
+				);
+				const plan = await this.readMealPlanOccurrences();
+
+				// Count how many times each recipe appears in the meal plan so
+				// duplicates contribute their ingredients once per appearance.
+				const planCount = new Map<string, number>();
+				const fileByPath = new Map<string, TFile>();
+				for (const occ of plan.occurrences) {
+					planCount.set(
+						occ.file.path,
+						(planCount.get(occ.file.path) ?? 0) + 1,
+					);
+					fileByPath.set(occ.file.path, occ.file);
+				}
+
+				// Plan wins over the frontmatter flag: a recipe in the plan is
+				// counted by its plan appearances; frontmatter-only recipes
+				// contribute a single time.
+				const targets: Array<{ file: TFile; count: number }> = [];
+				for (const [path, count] of planCount) {
+					const file = fileByPath.get(path);
+					if (file) targets.push({ file, count });
+				}
+				for (const file of fmFiles) {
+					if (!planCount.has(file.path)) {
+						targets.push({ file, count: 1 });
+					}
+				}
+
 				const allIngredients: RecipeIngredient[] = [];
-				for (const file of files) {
+				for (const { file, count } of targets) {
 					try {
 						const parsed = await parseRecipeFile(
 							this.app,
 							file,
 							this.sink.settings,
 						);
-						allIngredients.push(...parsed);
+						for (let i = 0; i < count; i++) {
+							allIngredients.push(...parsed);
+						}
 					} catch (err) {
 						console.error(
 							`pantry: failed to parse ${file.path}`,
@@ -74,11 +124,28 @@ export class GroceryListManager extends Events {
 					}
 				}
 				this.recipeIngredients = allIngredients;
-				this.selectedRecipes = [...files].sort((a, b) =>
-					a.basename.localeCompare(b.basename, undefined, {
+
+				const planned: PlannedRecipeEntry[] = [];
+				for (const [path, count] of planCount) {
+					const file = fileByPath.get(path);
+					if (file) planned.push({ file, count });
+				}
+				planned.sort((a, b) =>
+					a.file.basename.localeCompare(b.file.basename, undefined, {
 						sensitivity: "base",
 					}),
 				);
+
+				const individual = fmFiles
+					.filter((file) => !planCount.has(file.path))
+					.sort((a, b) =>
+						a.basename.localeCompare(b.basename, undefined, {
+							sensitivity: "base",
+						}),
+					);
+
+				this.plannedRecipes = planned;
+				this.individualRecipes = individual;
 				this.rebuildItems();
 				await this.pruneStaleCheckedKeys();
 			} finally {
@@ -87,6 +154,67 @@ export class GroceryListManager extends Events {
 			this.trigger("changed");
 		})();
 		return this.rebuildPromise;
+	}
+
+	/** The configured meal-plan note, or null when unset/missing. */
+	getMealPlanFile(): TFile | null {
+		const path = this.sink.settings.mealPlanNotePath.trim();
+		if (!path) return null;
+		const file = this.app.vault.getAbstractFileByPath(path);
+		return file instanceof TFile ? file : null;
+	}
+
+	/**
+	 * Read the configured meal-plan note into recipe occurrences. Returns an
+	 * empty result when the feature is disabled or the note is missing.
+	 */
+	async readMealPlanOccurrences(): Promise<{
+		occurrences: PlanOccurrence[];
+		unresolved: string[];
+	}> {
+		if (!this.sink.settings.mealPlanEnabled) {
+			return { occurrences: [], unresolved: [] };
+		}
+		const file = this.getMealPlanFile();
+		if (!file) return { occurrences: [], unresolved: [] };
+		try {
+			const contents = await this.app.vault.cachedRead(file);
+			return parseMealPlanContents(
+				this.app,
+				file.path,
+				contents,
+				this.sink.settings,
+			);
+		} catch (err) {
+			console.error(
+				`pantry: failed to read meal plan ${file.path}`,
+				err,
+			);
+			return { occurrences: [], unresolved: [] };
+		}
+	}
+
+	/**
+	 * Adopt a note as the active meal plan: point the setting at it, enable
+	 * the meal-plan source, and rebuild the grocery list. Returns counts for
+	 * a confirmation message.
+	 */
+	async adoptMealPlan(file: TFile): Promise<{
+		recipes: number;
+		occurrences: number;
+		unresolved: number;
+	}> {
+		this.sink.settings.mealPlanNotePath = file.path;
+		this.sink.settings.mealPlanEnabled = true;
+		await this.sink.save();
+		const parsed = await this.readMealPlanOccurrences();
+		await this.refresh();
+		const unique = new Set(parsed.occurrences.map((o) => o.file.path));
+		return {
+			recipes: unique.size,
+			occurrences: parsed.occurrences.length,
+			unresolved: parsed.unresolved.length,
+		};
 	}
 
 	/** Flip the checked state of an item and persist it. */
@@ -221,12 +349,14 @@ export class GroceryListManager extends Events {
 		if (this.sink.settings.state.oneOffs.length === before) return;
 		await this.sink.save();
 		this.rebuildItems();
+		await this.pruneStaleCheckedKeys();
 		this.trigger("changed");
 	}
 
 	/**
 	 * Clear the entire shopping list:
 	 *   - unset the selection property on every recipe currently flagged
+	 *   - stop the meal-plan note from contributing (without deleting it)
 	 *   - drop all one-off items
 	 *   - drop all checked-off state
 	 */
@@ -245,6 +375,9 @@ export class GroceryListManager extends Events {
 			}
 		}
 
+		// Disable the live meal-plan source so a clear actually stays cleared.
+		// The note itself is left untouched and can be re-imported later.
+		this.sink.settings.mealPlanEnabled = false;
 		const oneOffsCleared = this.sink.settings.state.oneOffs.length;
 		this.sink.settings.state.oneOffs = [];
 		this.sink.settings.state.checkedKeys = {};
@@ -252,7 +385,8 @@ export class GroceryListManager extends Events {
 		await this.sink.save();
 
 		this.recipeIngredients = [];
-		this.selectedRecipes = [];
+		this.individualRecipes = [];
+		this.plannedRecipes = [];
 		this.items = [];
 		this.trigger("changed");
 

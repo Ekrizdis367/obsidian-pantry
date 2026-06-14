@@ -25,10 +25,14 @@ export interface PantrySettings {
 	categoryOverrides: CategoryOverride[];
 	/** Auto-collapse a section when its last unchecked item gets checked. */
 	autoCollapseCompleted: boolean;
-	/** Auto-open notes whose `type` matches `recipeTypeValue` in the recipe view. */
+	/** Auto-open notes whose recipe-type frontmatter matches `recipeTypeValue` in the recipe view. */
 	autoOpenRecipeView: boolean;
-	/** The frontmatter `type` value that triggers the recipe view (default: "recipe"). */
+	/** Frontmatter property name read to identify a recipe note (default: "type"). */
+	recipeTypeProperty: string;
+	/** The frontmatter value (under `recipeTypeProperty`) that marks a recipe (default: "recipe"). */
 	recipeTypeValue: string;
+	/** Hide the first matching inline body image when the recipe has image frontmatter. */
+	suppressInlineRecipeImage: boolean;
 	/** How nutrition values are displayed in the recipe view. */
 	nutritionDisplay: NutritionDisplay;
 	/** When true, writes today's date to a recipe's frontmatter when it's added to the grocery list. */
@@ -47,6 +51,18 @@ export interface PantrySettings {
 	diabeticMode: boolean;
 	/** User-editable high-GI dictionary as raw text. One regex per line, `#` comments. */
 	giDictionary: string;
+	/** When true, the meal-plan note contributes its linked recipes to the grocery list. */
+	mealPlanEnabled: boolean;
+	/** Vault-relative path of the meal-plan note Pantry reads from and the planner writes to. */
+	mealPlanNotePath: string;
+	/** Whether the planner exposes a fourth "Snacks" slot in addition to Breakfast/Lunch/Dinner. */
+	mealPlanIncludeSnacks: boolean;
+	/** Whether the planner includes Saturday and Sunday in addition to the weekdays. */
+	mealPlanIncludeWeekend: boolean;
+	/** Default vault-relative folder for recipes imported from a URL. Empty = first recipe folder. */
+	importFolder: string;
+	/** Optional vault note used as the import template. Empty = built-in Pantry template. */
+	importTemplatePath: string;
 	/** Persisted state - kept in the same data file so a single saveData() round-trip is enough. */
 	state: PantrySavedState;
 }
@@ -108,7 +124,9 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 	categoryOverrides: [],
 	autoCollapseCompleted: true,
 	autoOpenRecipeView: true,
+	recipeTypeProperty: "type",
 	recipeTypeValue: "recipe",
+	suppressInlineRecipeImage: false,
 	nutritionDisplay: "per-serving",
 	trackLastMade: true,
 	lastMadeProperty: "lastMade",
@@ -118,12 +136,59 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 	suggestionCount: 5,
 	diabeticMode: false,
 	giDictionary: DEFAULT_GI_DICTIONARY,
+	mealPlanEnabled: false,
+	mealPlanNotePath: "",
+	mealPlanIncludeSnacks: true,
+	mealPlanIncludeWeekend: false,
+	importFolder: "",
+	importTemplatePath: "",
 	state: {
 		oneOffs: [],
 		checkedKeys: {},
 		collapsedGroups: {},
 	},
 };
+
+/** Canonical weekday order used by the planner grid and note serializer. */
+export const MEAL_PLAN_DAYS = [
+	"Monday",
+	"Tuesday",
+	"Wednesday",
+	"Thursday",
+	"Friday",
+	"Saturday",
+	"Sunday",
+] as const;
+
+/** Meal slots within a day. The final "Snacks" slot is gated by a setting. */
+export const MEAL_PLAN_SLOTS = [
+	"Breakfast",
+	"Lunch",
+	"Dinner",
+	"Snacks",
+] as const;
+
+/** Marker comment written at the top of planner-managed meal-plan notes. */
+export const MEAL_PLAN_MARKER = "<!-- pantry:meal-plan -->";
+
+/** Slots active given the current settings (drops "Snacks" when disabled). */
+export function activeMealSlots(settings: PantrySettings): string[] {
+	return settings.mealPlanIncludeSnacks
+		? [...MEAL_PLAN_SLOTS]
+		: MEAL_PLAN_SLOTS.filter((s) => s !== "Snacks");
+}
+
+/** Weekend day names, dropped from the planner grid unless enabled. */
+const MEAL_PLAN_WEEKEND_DAYS = ["Saturday", "Sunday"];
+
+/** Days active given the current settings (drops the weekend when disabled). */
+export function activeMealDays(settings: PantrySettings): string[] {
+	return settings.mealPlanIncludeWeekend
+		? [...MEAL_PLAN_DAYS]
+		: MEAL_PLAN_DAYS.filter(
+				(d) => !MEAL_PLAN_WEEKEND_DAYS.includes(d),
+			);
+}
 
 /**
  * Frontmatter property names the recipe view reads and writes.

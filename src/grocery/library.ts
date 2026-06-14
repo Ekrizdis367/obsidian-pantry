@@ -1,5 +1,9 @@
 import { App, TFile } from "obsidian";
-import { fileInRecipeFolders, isRecipeSelected } from "../parser/recipe";
+import {
+	fileInRecipeFolders,
+	isRecipeSelected,
+	recipeTypeMatches,
+} from "../parser/recipe";
 import { listMarkdownFilesInRecipeFolders } from "../utils/vault-files";
 import {
 	daysSince,
@@ -7,7 +11,7 @@ import {
 	readRecipeMeta,
 	RecipeMeta,
 } from "../parser/recipe-meta";
-import { PantrySettings, RECIPE_FRONTMATTER } from "../settings";
+import { PantrySettings } from "../settings";
 
 /** A recipe file paired with its parsed Pantry metadata. */
 export interface RecipeEntry {
@@ -26,15 +30,14 @@ export function listRecipeLibrary(
 	app: App,
 	settings: PantrySettings,
 ): RecipeEntry[] {
-	const target = settings.recipeTypeValue.trim().toLowerCase() || "recipe";
+	const target = settings.recipeTypeValue.trim() || "recipe";
+	const property = settings.recipeTypeProperty.trim() || "type";
 	const out: RecipeEntry[] = [];
 	for (const file of listMarkdownFilesInRecipeFolders(app, settings)) {
 		if (!fileInRecipeFolders(file, settings.recipeFolders)) continue;
 		const cache = app.metadataCache.getFileCache(file);
 		const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
-		const type = fm[RECIPE_FRONTMATTER.type];
-		if (typeof type !== "string") continue;
-		if (type.trim().toLowerCase() !== target) continue;
+		if (!recipeTypeMatches(fm[property], target)) continue;
 		out.push({
 			file,
 			meta: readRecipeMeta(cache, settings.lastMadeProperty),

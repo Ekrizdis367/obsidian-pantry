@@ -64,6 +64,12 @@
 	border-radius: var(--radius-m);
 }
 
+.pantry-recipes-section + .pantry-recipes-section {
+	margin-top: var(--size-2-3);
+	padding-top: var(--size-2-3);
+	border-top: 1px solid var(--background-modifier-border);
+}
+
 .pantry-recipes-header {
 	font-size: var(--font-ui-small);
 	font-weight: var(--font-semibold);
@@ -98,14 +104,26 @@
 }
 
 .pantry-recipe + .pantry-recipe::before {
-	content: ", ";
-	color: var(--text-muted);
+	content: " | ";
+	color: var(--text-faint);
 }
 
 .pantry-recipe .pantry-recipe-allergen-icon,
-.pantry-recipe .pantry-recipe-multiplier {
+.pantry-recipe .pantry-recipe-multiplier,
+.pantry-recipe .pantry-recipe-plan-count {
 	margin-inline-start: var(--size-2-2);
 	vertical-align: middle;
+}
+
+.pantry-recipe-plan-count {
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-muted);
+	background-color: var(--background-modifier-hover);
+	padding: 0 var(--size-2-2);
+	border-radius: var(--radius-s);
+	flex-shrink: 0;
 }
 
 .pantry-recipe-multiplier {
@@ -788,9 +806,9 @@
 	line-height: 1;
 	white-space: nowrap;
 	cursor: help;
-	background-color: var(--background-modifier-warning, rgba(255, 191, 0, 0.15));
-	border: 1px solid var(--color-yellow, rgba(255, 191, 0, 0.45));
-	color: var(--color-orange, var(--text-warning, #b88500));
+	background-color: color-mix(in srgb, var(--color-orange, #d97706) 14%, var(--background-secondary));
+	border: 1px solid color-mix(in srgb, var(--color-orange, #d97706) 40%, transparent);
+	color: var(--color-orange, #d97706);
 	font-variant-numeric: tabular-nums;
 	align-self: center;
 }
@@ -1202,4 +1220,361 @@
 	justify-content: flex-end;
 	padding-top: var(--size-2-3);
 	border-top: 1px solid var(--background-modifier-border);
+}
+
+.pantry-modal-actions,
+.pantry-import-modal .pantry-modal-actions {
+	display: flex;
+	gap: var(--size-2-2);
+	justify-content: flex-end;
+	padding-top: var(--size-4-2);
+	margin-top: var(--size-2-2);
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.pantry-import-hint {
+	margin: var(--size-2-3) 0 var(--size-2-2);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.pantry-import-textarea {
+	width: 100%;
+	min-height: 220px;
+	resize: vertical;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-small);
+	line-height: 1.5;
+	background: var(--background-primary-alt);
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	padding: var(--size-2-3);
+}
+
+/* Meal planner */
+.pantry-planner {
+	padding: var(--size-4-3);
+	padding-bottom: calc(var(--size-4-12) + var(--safe-area-inset-bottom, 0px));
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-3);
+	overflow-y: auto;
+}
+
+.pantry-planner-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+	flex-wrap: wrap;
+	padding-bottom: var(--size-4-2);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.pantry-planner-titlewrap {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	min-width: 0;
+}
+
+.pantry-planner-title {
+	font-size: var(--font-ui-large);
+	font-weight: var(--font-bold);
+	line-height: 1.2;
+}
+
+.pantry-planner-summary {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.pantry-planner-path {
+	color: var(--text-faint);
+}
+
+.pantry-planner-sync {
+	color: var(--color-green, var(--text-success, var(--interactive-accent)));
+	font-weight: var(--font-medium);
+}
+
+.pantry-planner-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	flex-shrink: 0;
+}
+
+.pantry-planner-cta {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	white-space: nowrap;
+}
+
+.pantry-planner-cta:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.pantry-planner-cta-icon {
+	display: inline-flex;
+	align-items: center;
+}
+
+.pantry-planner-cta-icon svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+.pantry-planner-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+	gap: var(--size-4-4);
+}
+
+.pantry-planner-day {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-l);
+	padding: var(--size-4-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	background-color: var(--background-secondary);
+	transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.pantry-planner-day:hover {
+	border-color: var(--background-modifier-border-hover);
+}
+
+.pantry-planner-day.is-today {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.pantry-planner-day-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-2-2);
+	padding-bottom: var(--size-2-2);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.pantry-planner-day-name {
+	font-weight: var(--font-semibold);
+	font-size: var(--font-ui-medium);
+}
+
+.pantry-planner-today-badge {
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+	border-radius: var(--radius-s);
+	padding: 1px var(--size-2-2);
+}
+
+.pantry-planner-slot {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+}
+
+.pantry-planner-slot-name {
+	font-size: var(--font-ui-smaller);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--text-muted);
+	font-weight: var(--font-medium);
+}
+
+.pantry-planner-chips {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+}
+
+.pantry-planner-chip {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--size-2-2);
+	padding: var(--size-2-2) var(--size-2-3);
+	border-radius: var(--radius-m);
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.pantry-planner-chip:hover {
+	border-color: var(--background-modifier-border-hover);
+	background-color: var(--background-primary-alt);
+}
+
+.pantry-planner-chip-link {
+	cursor: pointer;
+	font-size: var(--font-ui-medium);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pantry-planner-chip-remove {
+	flex-shrink: 0;
+}
+
+.pantry-planner-empty {
+	width: 100%;
+	text-align: left;
+	font-size: var(--font-ui-small);
+	color: var(--text-faint);
+	background-color: transparent;
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	padding: var(--size-2-2) var(--size-2-3);
+	cursor: pointer;
+	box-shadow: none;
+	transition: border-color 120ms ease, color 120ms ease;
+}
+
+.pantry-planner-empty:hover {
+	color: var(--text-muted);
+	border-color: var(--interactive-accent);
+}
+
+/* ----------------------------------------------------------------------
+ * Responsive / touch (iPhone & iPad, portrait + landscape)
+ * --------------------------------------------------------------------*/
+
+/*
+ * Respect the display cutout / home-indicator on all edges. The base
+ * rules already pad the bottom; these add the horizontal insets that
+ * matter in landscape when the notch sits on the leading/trailing edge.
+ */
+.pantry-view,
+.pantry-planner,
+.pantry-recipe-view {
+	padding-left: max(var(--size-4-3), var(--safe-area-inset-left, 0px));
+	padding-right: max(var(--size-4-3), var(--safe-area-inset-right, 0px));
+}
+
+/*
+ * Touch devices have no hover, so anything we reveal on :hover is
+ * otherwise unreachable. Keep the per-item remove button visible and
+ * give interactive controls finger-friendly (44px) hit targets.
+ */
+.is-mobile .pantry-remove {
+	opacity: 1;
+}
+
+.is-mobile .pantry-recipe-stepper {
+	height: 40px;
+}
+
+.is-mobile .pantry-recipe-stepper-button {
+	width: 44px;
+}
+
+.is-mobile .pantry-recipe-stepper-input {
+	width: 52px;
+	font-size: var(--font-ui-medium);
+}
+
+.is-mobile .pantry-recipe-favorite-toggle,
+.is-mobile .pantry-recipe-cart-toggle {
+	width: 40px;
+	height: 40px;
+}
+
+.is-mobile .pantry-item {
+	padding-top: var(--size-2-3);
+	padding-bottom: var(--size-2-3);
+}
+
+/* Planner: give the CTA + chip controls finger-friendly hit targets on
+   touch devices. */
+.is-mobile .pantry-planner-cta {
+	min-height: 40px;
+}
+
+.is-mobile .pantry-planner-chip {
+	padding: var(--size-2-2) var(--size-2-3);
+}
+
+.is-mobile .pantry-planner-chip-remove {
+	width: 36px;
+	height: 36px;
+}
+
+.is-mobile .pantry-planner-empty {
+	padding: var(--size-2-2) var(--size-2-3);
+}
+
+/*
+ * Phone portrait and other narrow panes: drop the recipe body to a
+ * single column (handled at 700px below too) and trim chrome so the
+ * content column keeps as much width as possible.
+ */
+@media (max-width: 480px) {
+	.pantry-view,
+	.pantry-planner,
+	.pantry-recipe-view {
+		padding-top: var(--size-4-2);
+		padding-left: max(var(--size-4-2), var(--safe-area-inset-left, 0px));
+		padding-right: max(var(--size-4-2), var(--safe-area-inset-right, 0px));
+	}
+
+	.pantry-recipe-ingredient {
+		grid-template-columns: minmax(60px, max-content) 1fr;
+		gap: var(--size-2-2) var(--size-4-1);
+	}
+
+	/* Let the temp/GI badges wrap under the name instead of forcing a
+	   third column that squeezes long ingredient names. */
+	.pantry-recipe-ingredient-temp,
+	.pantry-recipe-ingredient-gi {
+		grid-column: 2;
+		justify-self: start;
+	}
+
+	.pantry-recipe-instruction {
+		grid-template-columns: 28px 1fr;
+		padding: var(--size-4-2) var(--size-2-3);
+	}
+
+	.pantry-planner-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.pantry-planner-header {
+		flex-direction: column;
+		align-items: stretch;
+		gap: var(--size-2-3);
+	}
+
+	.pantry-planner-actions {
+		width: 100%;
+	}
+
+	.pantry-planner-cta {
+		flex: 1;
+		justify-content: center;
+	}
+}
+
+/*
+ * Landscape phones are wide but very short. Keep the image beside the
+ * content (the 2-column body already kicks in above 700px) but cap its
+ * height so a tall photo doesn't push the ingredients off-screen.
+ */
+@media (max-height: 480px) and (orientation: landscape) {
+	.pantry-recipe-image-card {
+		aspect-ratio: auto;
+		max-height: 40vh;
+	}
 }
