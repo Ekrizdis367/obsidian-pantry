@@ -389,8 +389,7 @@ export class PantrySettingsTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Include weekend days")
 			.setDesc(
-				// eslint-disable-next-line obsidianmd/ui/sentence-case -- weekday names are proper nouns
-				"Show Saturday and Sunday in the planner. Off by default — the planner covers Monday through Friday.",
+				"Show weekend days in the planner. Off by default, so the planner covers weekdays only.",
 			)
 			.addToggle((toggle) =>
 				toggle

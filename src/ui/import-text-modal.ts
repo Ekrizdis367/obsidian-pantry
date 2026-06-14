@@ -55,14 +55,22 @@ export class ImportTextModal extends Modal {
 			text: "Paste the full recipe below. The importer looks for ingredient and instruction headings, and otherwise detects ingredient lines by their quantities.",
 		});
 
+		const placeholderExample = [
+			"Ingredients",
+			"- 1 lb ground beef",
+			"- 1 onion, diced",
+			"",
+			"Instructions",
+			"1. Brown the beef.",
+			"2. Add the onion and simmer.",
+		].join("\n");
 		const textarea = contentEl.createEl("textarea", {
 			cls: "pantry-import-textarea",
 			attr: {
-				// eslint-disable-next-line obsidianmd/ui/sentence-case -- literal example of pasted recipe text
-				placeholder: "Ingredients\n- 1 lb ground beef\n- 1 onion, diced\n\nInstructions\n1. Brown the beef.\n2. Add the onion and simmer.",
 				rows: "14",
 			},
 		});
+		textarea.placeholder = placeholderExample;
 		textarea.addEventListener("input", () => {
 			this.body = textarea.value;
 		});
