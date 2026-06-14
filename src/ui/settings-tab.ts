@@ -32,6 +32,10 @@ export class PantrySettingsTab extends PluginSettingTab {
 	}
 
 	display(): void {
+		this.renderSettings();
+	}
+
+	private renderSettings(): void {
 		const { containerEl } = this;
 		containerEl.empty();
 
@@ -413,7 +417,7 @@ export class PantrySettingsTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.host.settings.diabeticMode = value;
 						await this.host.saveSettings();
-						this.display();
+						this.renderSettings();
 					}),
 			);
 
@@ -503,7 +507,7 @@ export class PantrySettingsTab extends PluginSettingTab {
 						...DEFAULT_CATEGORY_ORDER,
 					];
 					await this.host.saveSettings();
-					this.display();
+					this.renderSettings();
 					this.host.manager.trigger("changed");
 				}),
 			);
@@ -545,7 +549,7 @@ export class PantrySettingsTab extends PluginSettingTab {
 				btn.setButtonText("Reset").onClick(async () => {
 					this.host.settings.giDictionary = DEFAULT_GI_DICTIONARY;
 					await this.host.saveSettings();
-					this.display();
+					this.renderSettings();
 				}),
 			);
 	}

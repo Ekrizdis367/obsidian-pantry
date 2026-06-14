@@ -132,7 +132,6 @@ export class GroceryListView extends ItemView {
 
 		const clearBtn = new ButtonComponent(actionsEl)
 			.setButtonText("Clear list")
-			.setWarning()
 			.onClick(() => {
 				new ConfirmModal(this.app, {
 					title: "Clear list?",
@@ -145,7 +144,7 @@ export class GroceryListView extends ItemView {
 					},
 				}).open();
 			});
-		clearBtn.buttonEl.addClass("pantry-clear");
+		clearBtn.buttonEl.addClasses(["mod-warning", "pantry-clear"]);
 	}
 
 	private openGroupingMenu(evt: MouseEvent | undefined): void {
