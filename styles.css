@@ -463,6 +463,65 @@
 	height: 18px;
 }
 
+.pantry-recipe-kids-toggle {
+	display: inline-flex;
+	align-items: center;
+	border-radius: var(--radius-m);
+	border: 1px solid var(--background-modifier-border);
+	overflow: hidden;
+}
+
+.pantry-recipe-kids-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background-color: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	box-shadow: none;
+	transition:
+		background-color 80ms ease-in-out,
+		color 80ms ease-in-out;
+}
+
+.pantry-recipe-kids-btn + .pantry-recipe-kids-btn {
+	border-left: 1px solid var(--background-modifier-border);
+}
+
+.pantry-recipe-kids-btn:hover,
+.pantry-recipe-kids-btn:focus-visible {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+}
+
+.pantry-recipe-kids-up.is-active {
+	color: var(--color-green, #2ea043);
+	background-color: color-mix(
+		in srgb,
+		var(--color-green, #2ea043) 18%,
+		var(--background-secondary)
+	);
+}
+
+.pantry-recipe-kids-down.is-active {
+	color: var(--color-red, #e74c3c);
+	background-color: color-mix(
+		in srgb,
+		var(--color-red, #e74c3c) 15%,
+		var(--background-secondary)
+	);
+}
+
+.pantry-recipe-kids-btn .svg-icon {
+	width: 18px;
+	height: 18px;
+}
+
 .pantry-recipe-body {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
@@ -1428,6 +1487,10 @@
 	flex-shrink: 0;
 }
 
+.pantry-planner-autofill {
+	margin-right: var(--size-2-2);
+}
+
 .pantry-planner-empty {
 	width: 100%;
 	text-align: left;
@@ -1486,7 +1549,8 @@
 }
 
 .is-mobile .pantry-recipe-favorite-toggle,
-.is-mobile .pantry-recipe-cart-toggle {
+.is-mobile .pantry-recipe-cart-toggle,
+.is-mobile .pantry-recipe-kids-btn {
 	width: 40px;
 	height: 40px;
 }

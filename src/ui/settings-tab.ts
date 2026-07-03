@@ -1,5 +1,6 @@
 import {
 	App,
+	Notice,
 	Plugin,
 	PluginSettingTab,
 	Setting,
@@ -7,11 +8,18 @@ import {
 } from "obsidian";
 import { GroceryListManager } from "../grocery/manager";
 import {
+	formatStatusValuesInput,
+	parseStatusValuesInput,
+} from "../grocery/meal-plan-fill";
+import {
 	DEFAULT_GI_DICTIONARY,
 	validateGiDictionary,
 } from "../parser/glycemic";
 import {
+	DEFAULT_AUTO_FILL_STATUS_VALUES,
 	DEFAULT_CATEGORY_ORDER,
+	MEAL_PLAN_SLOTS,
+	normalizeMealPlanSlots,
 	PantrySettings,
 } from "../settings";
 import { RECIPE_TEMPLATE_TOKEN_HINT } from "../importer/default-template";
@@ -377,18 +385,44 @@ export class PantrySettingsTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Include a snacks slot")
+			.setName("Planner meal slots")
 			.setDesc(
-				"Add a fourth snacks slot to each day in the planner, alongside breakfast, lunch, and dinner.",
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.host.settings.mealPlanIncludeSnacks)
-					.onChange(async (value) => {
-						this.host.settings.mealPlanIncludeSnacks = value;
-						await this.host.saveSettings();
-					}),
+				"Choose which meals appear in each day. Select dinner only for a dinners-only plan, or enable all four for full weekly meal planning.",
 			);
+
+		for (const slot of MEAL_PLAN_SLOTS) {
+			new Setting(containerEl).setName(slot).addToggle((toggle) => {
+				toggle.setValue(
+					this.host.settings.mealPlanSlots.some(
+						(s) => s.toLowerCase() === slot.toLowerCase(),
+					),
+				);
+				toggle.onChange(async (enabled) => {
+					const current = new Set(
+						this.host.settings.mealPlanSlots.map((s) =>
+							s.toLowerCase(),
+						),
+					);
+					const key = slot.toLowerCase();
+					if (enabled) {
+						current.add(key);
+					} else {
+						if (current.size <= 1) {
+							new Notice("Keep at least one meal slot enabled.");
+							toggle.setValue(true);
+							return;
+						}
+						current.delete(key);
+					}
+					this.host.settings.mealPlanSlots = normalizeMealPlanSlots(
+						[...MEAL_PLAN_SLOTS].filter((s) =>
+							current.has(s.toLowerCase()),
+						),
+					);
+					await this.host.saveSettings();
+				});
+			});
+		}
 
 		new Setting(containerEl)
 			.setName("Include weekend days")
@@ -400,6 +434,61 @@ export class PantrySettingsTab extends PluginSettingTab {
 					.setValue(this.host.settings.mealPlanIncludeWeekend)
 					.onChange(async (value) => {
 						this.host.settings.mealPlanIncludeWeekend = value;
+						await this.host.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Auto-fill status property")
+			.setDesc(
+				"Frontmatter field used when auto-filling empty planner slots. Lower numeric values are weighted more heavily.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("Property name")
+					.setValue(this.host.settings.autoFillStatusProperty)
+					.onChange(async (value) => {
+						this.host.settings.autoFillStatusProperty =
+							value.trim() || "status";
+						await this.host.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Auto-fill status values")
+			.setDesc(
+				"Comma-separated numbers eligible for auto-fill (e.g. 1, 2, 3, 4, 5). Lower values are weighted more heavily. Only empty slots are filled; existing picks are never replaced.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("1, 2, 3, 4, 5")
+					.setValue(
+						formatStatusValuesInput(
+							this.host.settings.autoFillStatusValues,
+						),
+					)
+					.onChange(async (value) => {
+						const parsed = parseStatusValuesInput(value);
+						this.host.settings.autoFillStatusValues =
+							parsed.length > 0
+								? parsed
+								: [...DEFAULT_AUTO_FILL_STATUS_VALUES];
+						await this.host.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Auto-fill meal property")
+			.setDesc(
+				"Frontmatter list matched against each planner slot (breakfast, lunch, dinner, snacks). Recipes with no value are eligible for any slot.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("Property name")
+					.setValue(this.host.settings.autoFillMealProperty)
+					.onChange(async (value) => {
+						this.host.settings.autoFillMealProperty =
+							value.trim() || "meal";
 						await this.host.saveSettings();
 					}),
 			);

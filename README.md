@@ -25,8 +25,9 @@ Recipe view with hero image, scaled ingredients, instructions, and portion multi
 - **No duplicate hero image.** When a recipe both embeds its photo inline and references it via `image` frontmatter, an optional setting hides the matching inline copy so the image appears only once.
 - **Allergen warnings.** Set your personal allergens in settings; recipes whose `allergens` frontmatter overlaps yours show a red banner in the recipe view and a warning icon next to the recipe in the grocery list.
 - **Favorites.** Star a recipe with one click and the `favorite: true` frontmatter is set automatically. Used by the meal recommender.
+- **Kids approved.** Thumbs-up / thumbs-down buttons in the recipe view write `kidsApproved: true` or `kidsApproved: false` to frontmatter (click again to clear). Handy for filtering kid-friendly meals in Bases or your own workflows.
 - **Last-made tracking & cook counts.** Optionally stamp today's date into `lastMade` and increment `cookedCount` whenever you add a recipe to the grocery list — powering the cooking-stats leaderboard.
-- **Weekly meal planner.** Plan breakfast/lunch/dinner (and optional snacks) for the week in a grid view backed by a plain-Markdown note of recipe links. Push the whole plan to the grocery list with one **Add to grocery list** button (or enable continuous auto-sync), and import any existing meal-plan note full of links you already maintain.
+- **Weekly meal planner.** Plan the meals you actually cook — enable only dinner, or breakfast through snacks — in a grid view backed by a plain-Markdown note of recipe links. Push the whole plan to the grocery list with one **Add to grocery list** button (or enable continuous auto-sync), import any existing meal-plan note full of links you already maintain, and **auto-fill empty slots** from recipe `status` and `meal` frontmatter.
 - **Import from URL.** Paste a recipe page address and Pantry extracts structured data (schema.org JSON-LD) into a normalized recipe note with the full Pantry frontmatter shape, then opens it in the recipe view.
 - **Import from text.** Paste recipe text copied from a website, email, or PDF and Pantry parses it into the same normalized note — ideal for pages with many recipes, paywalled sites, or anything without structured data.
 - **Meal recommender.** "Suggest a meal" surfaces recipes you haven't cooked recently, with optional filters for favorites and allergens.
@@ -83,7 +84,7 @@ The tag is matched case-insensitively; `#ignoreingredient`, `#ignore-ingredient`
 
 Pantry ships a custom view for recipe notes. To opt a note in, add `type: recipe` to its frontmatter. Both the property name and the value it's matched against are configurable in **Settings → Recipe view** (set **Recipe type property** to `category`, `kind`, etc. if you don't use `type`). Matching is case-insensitive, and wikilink values such as `type: [[Recipes]]` are matched against the linked note's name — so the property picker's linked values work too. When auto-open is on (the default), opening such a note switches the leaf into the recipe view automatically; you can always switch back with the **Edit as Markdown** button in the view's action bar, the **Recipe mode** entry in the pane's three-dot menu, or the **Open as Markdown** command.
 
-The view shows a meta banner with the multiplier, servings, and nutrition; a hero image card; a tabular ingredients list with safe-cooking-temperature badges next to detected meats; and a numbered instructions card.
+The view shows a meta banner with the multiplier, servings, and nutrition; a hero image card; a tabular ingredients list with safe-cooking-temperature badges next to detected meats; and a numbered instructions card. The meta banner also includes a favorite star, **kids approved** thumbs-up / thumbs-down controls, and the add-to-grocery-list toggle.
 
 If a recipe both embeds its photo inline and points to the same file via the `image` frontmatter, enable **Settings → Recipe view → Suppress duplicate inline image** to hide the first inline copy that matches the frontmatter image so it only renders once (off by default).
 
@@ -101,6 +102,9 @@ Frontmatter properties the view reads and writes:
 | `allergens` | array of strings | Allergens this recipe contains (e.g. `["nuts", "dairy"]`). Compared case-insensitively against your allergen list in settings. |
 | `prepTime`, `cookTime`, `totalTime` | number | Minutes. `totalTime` is computed from `prepTime + cookTime` when not provided. |
 | `favorite` | boolean | Set with one click via the star button in the recipe view. |
+| `kidsApproved` | boolean | Set with the thumbs-up (`true`) or thumbs-down (`false`) buttons in the recipe view. Absent when neither is selected. |
+| `status` | number | Optional priority for meal-planner auto-fill (lower numbers are weighted more heavily). Not read by the recipe view itself. |
+| `meal` | array of strings | Optional meal tags (`breakfast`, `lunch`, `dinner`, `snacks`) matched when auto-filling empty planner slots. |
 | `lastMade` | date | Auto-stamped to today's date when you add the recipe to the grocery list (configurable in settings). |
 | `cookedCount` | number | Auto-incremented when `lastMade` advances to a new day. Powers the cooking stats leaderboard. |
 | `source` | string | Original recipe page URL. Written automatically when you import from a URL. |
@@ -176,6 +180,7 @@ Copy individual notes (or the whole thing) into one of your configured **Recipe 
 | Open as recipe | Switch the active markdown note into the recipe view. |
 | Open as Markdown | Switch the active recipe view back to standard Markdown editing. |
 | Open meal planner | Open the weekly meal planner grid. |
+| Auto-fill empty meal planner slots | Fill only empty planner cells from recipes matching your configured status and meal frontmatter. |
 | Import meal plan into shopping list | Add the recipes linked in the active meal-plan note (or one you pick) to the grocery list. |
 | Suggest a meal | Open a modal with N recipes you haven't cooked recently. Filter by favorites, hide allergens. |
 | Show cooking stats | Open the leaderboard ranking every recipe by `cookedCount`. |
@@ -195,7 +200,7 @@ All commands appear in the command palette under the **Pantry:** prefix.
 
 Instead of (or in addition to) flagging individual recipes with the selection property, you can plan a week of meals and let Pantry build the grocery list from the linked recipes.
 
-- Open the planner with the **calendar** ribbon icon or the **Open meal planner** command. It shows a grid of days, each with breakfast, lunch, and dinner slots. Add a fourth **Snacks** slot via **Settings → Meal planning → Include a snacks slot**, and add Saturday/Sunday via **Settings → Meal planning → Include weekend days** (off by default, so the planner covers Monday–Friday). The current day's card is highlighted, and each slot has an "Add a recipe" / "Add another" button.
+- Open the planner with the **calendar** ribbon icon or the **Open meal planner** command. It shows a grid of days with the meal slots you enable under **Settings → Meal planning → Planner meal slots** (breakfast, lunch, dinner, and snacks — pick **Dinner** only for a dinners-only plan, or all four for full weekly meal planning). Add Saturday/Sunday via **Include weekend days** (off by default, so the planner covers Monday–Friday). The current day's card is highlighted, and each slot has an "Add a recipe" / "Add another" button.
 - The grid is backed by a plain-Markdown note at the path you set in **Settings → Meal planning → Meal plan note**. The planner creates it if needed and reads/writes it as standard Markdown, so it stays editable by hand and syncs like any other note.
 - **Planning does not touch your grocery list by default.** When you're ready, press **Add to grocery list** in the planner to add every planned recipe to the list in one click (each recipe is flagged once). This is a one-time push, so editing the plan afterward won't change the list until you press it again.
 - Prefer continuous syncing? Turn on **Settings → Meal planning → Auto-sync meal plan to the shopping list** and every recipe linked in the note contributes its ingredients to the grocery list as you edit the planner. A recipe linked three times across the week is counted three times, and the planner shows an "auto-syncing" indicator. (Clearing the list turns this back off.)
@@ -216,6 +221,40 @@ The note format is just day headings with linked list items — the same shape y
 ```
 
 Already keep your own master meal-plan note full of recipe links? Run **Import meal plan into shopping list** with that note active (or pick it from the modal) to pull every linked recipe straight onto the grocery list — no per-recipe tagging required. Pantry resolves each wikilink to a recipe in your configured **Recipe folders**; links that don't resolve are skipped and reported.
+
+### Auto-fill from status
+
+If your recipes already carry a numeric **`status`** field (1 = cook soonest, 5 = lowest priority) and optional **`meal`** tags (`breakfast`, `lunch`, `dinner`, `snacks`), Pantry can fill **empty** planner slots for you without touching slots you've already picked manually.
+
+- Press **Auto-fill empty slots** in the planner header, or run **Auto-fill empty meal planner slots** from the command palette.
+- Only blank cells are filled — existing picks stay as-is. Start from an empty grid to populate the whole week in one go.
+- By default, recipes with `status` of **1 through 5** are eligible; lower numbers are weighted more heavily (a `1` is five times as likely as a `5`).
+- When a recipe's `meal` list includes the slot name, it is preferred for that slot. Recipes with no `meal` value can fill any slot.
+
+Configure the frontmatter property names and allowed status values under **Settings → Meal planning → Auto-fill status property**, **Auto-fill status values**, and **Auto-fill meal property**.
+
+### Meal planning settings
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| Planner meal slots | Breakfast, lunch, dinner | Which meal rows appear each day. Enable **Dinner** only for a dinners-only workflow, or all four slots for full weekly planning. |
+| Include weekend days | Off | Adds Saturday and Sunday to the grid (weekdays only when off). |
+| Meal plan note | *(empty)* | Vault path of the Markdown note the planner reads and writes. Created automatically if missing. |
+| Auto-sync meal plan to the shopping list | Off | When on, linked recipes in the plan note continuously contribute to the grocery list as you edit the planner. |
+| Auto-fill status property | `status` | Frontmatter field used when auto-filling empty slots. |
+| Auto-fill status values | `1, 2, 3, 4, 5` | Numeric values eligible for auto-fill. Lower numbers are weighted more heavily. |
+| Auto-fill meal property | `meal` | Frontmatter list matched against each slot name (`breakfast`, `lunch`, `dinner`, `snacks`). Recipes with no value can fill any slot. |
+
+```yaml
+---
+type: recipe
+status: 2
+meal:
+  - dinner
+  - lunch
+kidsApproved: true
+---
+```
 
 ## Allergens
 
@@ -276,7 +315,7 @@ The plugin runs entirely offline and **does not access** your system clipboard. 
 
 **Import recipe from URL** makes a single outbound HTTP request to the address you provide so Pantry can read structured recipe data from that page. No other network calls are made, and nothing is sent to third-party services beyond the site you paste. **Import recipe from text** makes no network requests at all — parsing happens entirely on-device.
 
-Recipe discovery walks only the folders you configure in **Recipe folders** (or the vault root when that list is empty) — it does not call `vault.getMarkdownFiles()` or enumerate unrelated files. The plugin writes to its own data file and only modifies recipe frontmatter when you explicitly clear the list, use the toggle command, or change the multiplier in the recipe view.
+Recipe discovery walks only the folders you configure in **Recipe folders** (or the vault root when that list is empty) — it does not call `vault.getMarkdownFiles()` or enumerate unrelated files. The plugin writes to its own data file and only modifies recipe frontmatter when you explicitly clear the list, use the toggle command, change the multiplier, favorite star, or kids-approved buttons in the recipe view, or use similar explicit actions.
 
 ## Development
 
@@ -291,7 +330,7 @@ To test locally, this folder must live at `<Vault>/.obsidian/plugins/pantry/` (m
 
 ## Release
 
-Push a tag whose name exactly matches the `version` in `manifest.json` (no leading `v`, e.g. `1.0.3`). The [release workflow](.github/workflows/release.yml) builds the plugin, attests `main.js` and `styles.css`, and publishes a GitHub release with auto-generated notes and the three assets (`main.js`, `manifest.json`, `styles.css`).
+Push a tag whose name exactly matches the `version` in `manifest.json` (no leading `v`, e.g. `1.2.0`). The [release workflow](.github/workflows/release.yml) builds the plugin, attests `main.js` and `styles.css`, and publishes a GitHub release with auto-generated notes and the three assets (`main.js`, `manifest.json`, `styles.css`).
 
 ## Support
 

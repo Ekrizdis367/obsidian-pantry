@@ -11,7 +11,9 @@ import { GroceryListManager, SaveSink } from "./grocery/manager";
 import { recipeTypeMatches } from "./parser/recipe";
 import {
 	DEFAULT_CATEGORY_ORDER,
+	DEFAULT_MEAL_PLAN_SLOT_SELECTION,
 	DEFAULT_SETTINGS,
+	normalizeMealPlanSlots,
 	PantrySettings,
 } from "./settings";
 import { PantrySettingsTab } from "./ui/settings-tab";
@@ -395,14 +397,47 @@ function mergeSettings(
 			typeof raw.mealPlanNotePath === "string"
 				? raw.mealPlanNotePath.trim()
 				: base.mealPlanNotePath,
-		mealPlanIncludeSnacks:
-			typeof raw.mealPlanIncludeSnacks === "boolean"
-				? raw.mealPlanIncludeSnacks
-				: base.mealPlanIncludeSnacks,
+		mealPlanSlots: (() => {
+			if (Array.isArray(raw.mealPlanSlots) && raw.mealPlanSlots.length > 0) {
+				return normalizeMealPlanSlots(
+					raw.mealPlanSlots.filter(
+						(s): s is string => typeof s === "string",
+					),
+				);
+			}
+			// Legacy: single "include snacks" toggle before per-slot selection.
+			const legacySnacks = (
+				raw as { mealPlanIncludeSnacks?: boolean }
+			).mealPlanIncludeSnacks;
+			const legacy: string[] = [...DEFAULT_MEAL_PLAN_SLOT_SELECTION];
+			if (legacySnacks === true) {
+				legacy.push("Snacks");
+			}
+			return normalizeMealPlanSlots(legacy);
+		})(),
 		mealPlanIncludeWeekend:
 			typeof raw.mealPlanIncludeWeekend === "boolean"
 				? raw.mealPlanIncludeWeekend
 				: base.mealPlanIncludeWeekend,
+		autoFillStatusProperty:
+			typeof raw.autoFillStatusProperty === "string" &&
+			raw.autoFillStatusProperty.trim()
+				? raw.autoFillStatusProperty.trim()
+				: base.autoFillStatusProperty,
+		autoFillStatusValues: (() => {
+			if (!Array.isArray(raw.autoFillStatusValues)) {
+				return base.autoFillStatusValues;
+			}
+			const vals = raw.autoFillStatusValues
+				.filter((n): n is number => typeof n === "number" && Number.isFinite(n))
+				.map((n) => Math.round(n));
+			return vals.length > 0 ? vals : base.autoFillStatusValues;
+		})(),
+		autoFillMealProperty:
+			typeof raw.autoFillMealProperty === "string" &&
+			raw.autoFillMealProperty.trim()
+				? raw.autoFillMealProperty.trim()
+				: base.autoFillMealProperty,
 		importFolder:
 			typeof raw.importFolder === "string"
 				? raw.importFolder.trim()

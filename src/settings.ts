@@ -55,10 +55,16 @@ export interface PantrySettings {
 	mealPlanEnabled: boolean;
 	/** Vault-relative path of the meal-plan note Pantry reads from and the planner writes to. */
 	mealPlanNotePath: string;
-	/** Whether the planner exposes a fourth "Snacks" slot in addition to Breakfast/Lunch/Dinner. */
-	mealPlanIncludeSnacks: boolean;
+	/** Which meal slots appear in the planner grid (subset of Breakfast/Lunch/Dinner/Snacks). */
+	mealPlanSlots: string[];
 	/** Whether the planner includes Saturday and Sunday in addition to the weekdays. */
 	mealPlanIncludeWeekend: boolean;
+	/** Frontmatter property read when auto-filling empty planner slots (default: status). */
+	autoFillStatusProperty: string;
+	/** Allowed numeric status values for auto-fill, lower numbers weighted more heavily. */
+	autoFillStatusValues: number[];
+	/** Frontmatter property listing which meals a recipe suits (default: meal). */
+	autoFillMealProperty: string;
 	/** Default vault-relative folder for recipes imported from a URL. Empty = first recipe folder. */
 	importFolder: string;
 	/** Optional vault note used as the import template. Empty = built-in Pantry template. */
@@ -113,6 +119,80 @@ export const DEFAULT_CATEGORY_ORDER = [
 	"Other",
 ];
 
+/** Default status values eligible for meal-planner auto-fill (1 = highest priority). */
+export const DEFAULT_AUTO_FILL_STATUS_VALUES = [1, 2, 3, 4, 5] as const;
+
+/** Canonical weekday order used by the planner grid and note serializer. */
+export const MEAL_PLAN_DAYS = [
+	"Monday",
+	"Tuesday",
+	"Wednesday",
+	"Thursday",
+	"Friday",
+	"Saturday",
+	"Sunday",
+] as const;
+
+/** All meal slots Pantry understands (display order). */
+export const MEAL_PLAN_SLOTS = [
+	"Breakfast",
+	"Lunch",
+	"Dinner",
+	"Snacks",
+] as const;
+
+/** Default slot selection for new installs (breakfast, lunch, dinner). */
+export const DEFAULT_MEAL_PLAN_SLOT_SELECTION = [
+	"Breakfast",
+	"Lunch",
+	"Dinner",
+] as const;
+
+/** Marker comment written at the top of planner-managed meal-plan notes. */
+export const MEAL_PLAN_MARKER = "<!-- pantry:meal-plan -->";
+
+/**
+ * Normalize a user-provided slot list to canonical names in display order.
+ * Falls back to {@link DEFAULT_MEAL_PLAN_SLOT_SELECTION} when nothing valid remains.
+ */
+export function normalizeMealPlanSlots(input: readonly string[]): string[] {
+	if (input.length === 0) return [...DEFAULT_MEAL_PLAN_SLOT_SELECTION];
+	const wanted = new Set(
+		input.map((s) => s.trim().toLowerCase()).filter(Boolean),
+	);
+	const out = MEAL_PLAN_SLOTS.filter((slot) =>
+		wanted.has(slot.toLowerCase()),
+	);
+	return out.length > 0 ? [...out] : [...DEFAULT_MEAL_PLAN_SLOT_SELECTION];
+}
+
+/** Slots active in the planner, in canonical order. */
+export function activeMealSlots(settings: PantrySettings): string[] {
+	return normalizeMealPlanSlots(settings.mealPlanSlots);
+}
+
+/** Whether a canonical slot name is enabled in the planner. */
+export function isMealPlanSlotEnabled(
+	settings: PantrySettings,
+	slot: string,
+): boolean {
+	return activeMealSlots(settings).some(
+		(s) => s.toLowerCase() === slot.toLowerCase(),
+	);
+}
+
+/** Weekend day names, dropped from the planner grid unless enabled. */
+const MEAL_PLAN_WEEKEND_DAYS = ["Saturday", "Sunday"];
+
+/** Days active given the current settings (drops the weekend when disabled). */
+export function activeMealDays(settings: PantrySettings): string[] {
+	return settings.mealPlanIncludeWeekend
+		? [...MEAL_PLAN_DAYS]
+		: MEAL_PLAN_DAYS.filter(
+				(d) => !MEAL_PLAN_WEEKEND_DAYS.includes(d),
+			);
+}
+
 export const DEFAULT_SETTINGS: PantrySettings = {
 	recipeFolders: [],
 	selectionProperty: "groceryList",
@@ -138,8 +218,11 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 	giDictionary: DEFAULT_GI_DICTIONARY,
 	mealPlanEnabled: false,
 	mealPlanNotePath: "",
-	mealPlanIncludeSnacks: true,
+	mealPlanSlots: [...DEFAULT_MEAL_PLAN_SLOT_SELECTION],
 	mealPlanIncludeWeekend: false,
+	autoFillStatusProperty: "status",
+	autoFillStatusValues: [...DEFAULT_AUTO_FILL_STATUS_VALUES],
+	autoFillMealProperty: "meal",
 	importFolder: "",
 	importTemplatePath: "",
 	state: {
@@ -148,47 +231,6 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 		collapsedGroups: {},
 	},
 };
-
-/** Canonical weekday order used by the planner grid and note serializer. */
-export const MEAL_PLAN_DAYS = [
-	"Monday",
-	"Tuesday",
-	"Wednesday",
-	"Thursday",
-	"Friday",
-	"Saturday",
-	"Sunday",
-] as const;
-
-/** Meal slots within a day. The final "Snacks" slot is gated by a setting. */
-export const MEAL_PLAN_SLOTS = [
-	"Breakfast",
-	"Lunch",
-	"Dinner",
-	"Snacks",
-] as const;
-
-/** Marker comment written at the top of planner-managed meal-plan notes. */
-export const MEAL_PLAN_MARKER = "<!-- pantry:meal-plan -->";
-
-/** Slots active given the current settings (drops "Snacks" when disabled). */
-export function activeMealSlots(settings: PantrySettings): string[] {
-	return settings.mealPlanIncludeSnacks
-		? [...MEAL_PLAN_SLOTS]
-		: MEAL_PLAN_SLOTS.filter((s) => s !== "Snacks");
-}
-
-/** Weekend day names, dropped from the planner grid unless enabled. */
-const MEAL_PLAN_WEEKEND_DAYS = ["Saturday", "Sunday"];
-
-/** Days active given the current settings (drops the weekend when disabled). */
-export function activeMealDays(settings: PantrySettings): string[] {
-	return settings.mealPlanIncludeWeekend
-		? [...MEAL_PLAN_DAYS]
-		: MEAL_PLAN_DAYS.filter(
-				(d) => !MEAL_PLAN_WEEKEND_DAYS.includes(d),
-			);
-}
 
 /**
  * Frontmatter property names the recipe view reads and writes.
@@ -209,5 +251,6 @@ export const RECIPE_FRONTMATTER = {
 	cookTime: "cookTime",
 	totalTime: "totalTime",
 	favorite: "favorite",
+	kidsApproved: "kidsApproved",
 	cookedCount: "cookedCount",
 } as const;

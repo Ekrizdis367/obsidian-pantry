@@ -16,6 +16,12 @@ const KEY_ALIASES: Record<string, readonly string[]> = {
 	[RECIPE_FRONTMATTER.cookTime]: ["cook", "cook_time", "cooking_time"],
 	[RECIPE_FRONTMATTER.totalTime]: ["total", "total_time", "time"],
 	[RECIPE_FRONTMATTER.favorite]: ["favourite", "starred"],
+	[RECIPE_FRONTMATTER.kidsApproved]: [
+		"kids_approved",
+		"kids-approved",
+		"kidApproved",
+		"kid_approved",
+	],
 	[RECIPE_FRONTMATTER.cookedCount]: [
 		"cooked_count",
 		"timesCooked",
@@ -134,6 +140,34 @@ export function readFavorite(frontmatter: Record<string, unknown>): boolean {
 	);
 }
 
+/**
+ * Read the kids-approved vote. Returns `true` (thumbs up), `false` (thumbs
+ * down), or `null` when the property is absent or unset.
+ */
+export function readKidsApproved(
+	frontmatter: Record<string, unknown>,
+): boolean | null {
+	const raw = findValue(
+		frontmatter,
+		aliasesFor(RECIPE_FRONTMATTER.kidsApproved),
+	);
+	if (raw === undefined || raw === null) return null;
+	if (typeof raw === "boolean") return raw;
+	if (typeof raw === "string") {
+		const v = raw.trim().toLowerCase();
+		if (v === "true" || v === "yes" || v === "1" || v === "up") return true;
+		if (v === "false" || v === "no" || v === "0" || v === "down") {
+			return false;
+		}
+		return null;
+	}
+	if (typeof raw === "number") {
+		if (raw === 0) return false;
+		return raw !== 0 ? true : null;
+	}
+	return null;
+}
+
 export function readCookedCount(frontmatter: Record<string, unknown>): number {
 	const n = toNumber(
 		findValue(frontmatter, aliasesFor(RECIPE_FRONTMATTER.cookedCount)),
@@ -201,6 +235,8 @@ export interface RecipeMeta {
 	allergens: string[];
 	times: RecipeTimes;
 	favorite: boolean;
+	/** `true` = kids approved, `false` = not approved, `null` = no vote. */
+	kidsApproved: boolean | null;
 	cookedCount: number;
 	lastMade: string | null;
 }
@@ -215,6 +251,7 @@ export function readRecipeMeta(
 		allergens: readAllergens(fm),
 		times: readTimes(fm),
 		favorite: readFavorite(fm),
+		kidsApproved: readKidsApproved(fm),
 		cookedCount: readCookedCount(fm),
 		lastMade: readLastMade(fm, lastMadeKey),
 	};

@@ -12,7 +12,12 @@ import {
 	importMealPlanNote,
 	MealPlanPickerModal,
 } from "../ui/meal-plan-picker";
+import {
+	formatAutoFillNotice,
+	runAutoFillWeek,
+} from "../grocery/meal-plan-fill";
 import { SuggestMealModal } from "../ui/suggest-modal";
+import { MealPlannerView, VIEW_TYPE_MEAL_PLANNER } from "../ui/planner-view";
 
 export interface CommandsHost {
 	plugin: Plugin;
@@ -75,6 +80,27 @@ export function registerCommands(host: CommandsHost): void {
 		name: "Open meal planner",
 		callback: () => {
 			void host.openMealPlanner();
+		},
+	});
+
+	plugin.addCommand({
+		id: "auto-fill-meal-planner",
+		name: "Auto-fill empty meal planner slots",
+		callback: async () => {
+			const result = await runAutoFillWeek(plugin.app, {
+				getSettings: () => host.settings,
+				saveSettings: () => host.saveSettings(),
+				manager,
+			});
+			for (const leaf of plugin.app.workspace.getLeavesOfType(
+				VIEW_TYPE_MEAL_PLANNER,
+			)) {
+				const view = leaf.view;
+				if (view instanceof MealPlannerView) {
+					await view.reloadFromDisk();
+				}
+			}
+			new Notice(formatAutoFillNotice(result));
 		},
 	});
 

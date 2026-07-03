@@ -8,6 +8,10 @@ import {
 	WorkspaceLeaf,
 	setIcon,
 } from "obsidian";
+import {
+	formatAutoFillNotice,
+	runAutoFillWeek,
+} from "../grocery/meal-plan-fill";
 import { GroceryListManager } from "../grocery/manager";
 import { listRecipeLibrary } from "../grocery/library";
 import { setRecipeSelection } from "../grocery/selection";
@@ -84,6 +88,16 @@ export class MealPlannerView extends ItemView {
 		});
 
 		const actions = header.createDiv({ cls: "pantry-planner-actions" });
+
+		const autoFillBtn = actions.createEl("button", {
+			cls: "pantry-planner-autofill",
+			attr: { type: "button" },
+		});
+		autoFillBtn.createSpan({ text: "Auto-fill empty slots" });
+		autoFillBtn.addEventListener("click", () => {
+			void this.autoFillEmptySlots();
+		});
+
 		this.addToListBtn = actions.createEl("button", {
 			cls: "mod-cta pantry-planner-cta",
 			attr: { type: "button" },
@@ -105,6 +119,22 @@ export class MealPlannerView extends ItemView {
 
 	onClose(): Promise<void> {
 		return Promise.resolve();
+	}
+
+	/** Reload the plan note from disk and re-render (e.g. after a command-side auto-fill). */
+	async reloadFromDisk(): Promise<void> {
+		await this.loadGrid();
+		this.render();
+	}
+
+	private async autoFillEmptySlots(): Promise<void> {
+		const result = await runAutoFillWeek(this.app, {
+			getSettings: () => this.deps.getSettings(),
+			saveSettings: () => this.deps.saveSettings(),
+			manager: this.deps.manager,
+		});
+		await this.reloadFromDisk();
+		new Notice(formatAutoFillNotice(result));
 	}
 
 	/** Load the configured note (if any) into the grid. */

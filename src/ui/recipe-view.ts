@@ -21,6 +21,7 @@ import {
 	readAllergens,
 	readDiet,
 	readFavorite,
+	readKidsApproved,
 	readTimes,
 	RecipeTimes,
 } from "../parser/recipe-meta";
@@ -164,6 +165,7 @@ export class RecipeView extends TextFileView {
 		const allergens = readAllergens(frontmatter);
 		const times = readTimes(frontmatter);
 		const isFavorite = readFavorite(frontmatter);
+		const kidsApproved = readKidsApproved(frontmatter);
 		const allergenWarnings = matchingAllergens(
 			allergens,
 			settings.myAllergens,
@@ -181,6 +183,7 @@ export class RecipeView extends TextFileView {
 			servings,
 			isSelected,
 			isFavorite,
+			kidsApproved,
 			settings,
 		);
 
@@ -514,6 +517,7 @@ export class RecipeView extends TextFileView {
 		servings: number | null,
 		isSelected: boolean,
 		isFavorite: boolean,
+		kidsApproved: boolean | null,
 		settings: PantrySettings,
 	): void {
 		const banner = root.createDiv({
@@ -539,7 +543,90 @@ export class RecipeView extends TextFileView {
 			cls: "pantry-recipe-meta-actions",
 		});
 		this.renderFavoriteToggle(actions, file, isFavorite);
+		this.renderKidsApprovedToggle(actions, file, kidsApproved);
 		this.renderCartToggle(actions, file, isSelected, settings);
+	}
+
+	private renderKidsApprovedToggle(
+		actions: HTMLElement,
+		file: TFile,
+		initial: boolean | null,
+	): void {
+		const group = actions.createDiv({ cls: "pantry-recipe-kids-toggle" });
+		group.setAttribute("role", "group");
+		group.setAttribute("aria-label", "Kids approved");
+
+		let state = initial;
+
+		const up = group.createEl("button", {
+			cls: "pantry-recipe-kids-btn pantry-recipe-kids-up",
+			attr: { type: "button" },
+		});
+		const down = group.createEl("button", {
+			cls: "pantry-recipe-kids-btn pantry-recipe-kids-down",
+			attr: { type: "button" },
+		});
+
+		const sync = (): void => {
+			up.toggleClass("is-active", state === true);
+			down.toggleClass("is-active", state === false);
+			up.setAttribute("aria-pressed", state === true ? "true" : "false");
+			down.setAttribute("aria-pressed", state === false ? "true" : "false");
+			up.setAttribute(
+				"aria-label",
+				state === true ? "Kids approved (clear vote)" : "Mark kids approved",
+			);
+			down.setAttribute(
+				"aria-label",
+				state === false
+					? "Not kids approved (clear vote)"
+					: "Mark not kids approved",
+			);
+			up.title =
+				state === true ? "Kids approved — click to clear" : "Kids approved";
+			down.title =
+				state === false
+					? "Not kids approved — click to clear"
+					: "Not kids approved";
+			up.empty();
+			down.empty();
+			setIcon(up, "thumbs-up");
+			setIcon(down, "thumbs-down");
+		};
+
+		sync();
+
+		up.addEventListener("click", () => {
+			const next: boolean | null = state === true ? null : true;
+			void this.setKidsApproved(file, next).then(() => {
+				state = next;
+				sync();
+			});
+		});
+
+		down.addEventListener("click", () => {
+			const next: boolean | null = state === false ? null : false;
+			void this.setKidsApproved(file, next).then(() => {
+				state = next;
+				sync();
+			});
+		});
+	}
+
+	private async setKidsApproved(
+		file: TFile,
+		next: boolean | null,
+	): Promise<void> {
+		await this.app.fileManager.processFrontMatter(
+			file,
+			(fm: Record<string, unknown>) => {
+				if (next === null) {
+					delete fm[RECIPE_FRONTMATTER.kidsApproved];
+				} else {
+					fm[RECIPE_FRONTMATTER.kidsApproved] = next;
+				}
+			},
+		);
 	}
 
 	private renderFavoriteToggle(
