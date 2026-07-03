@@ -24,6 +24,8 @@ import { GroceryListView, VIEW_TYPE_GROCERY_LIST } from "./ui/view";
 export default class PantryPlugin extends Plugin {
 	settings!: PantrySettings;
 	manager!: GroceryListManager;
+	/** Vault path awaiting a metadata-cache retry for recipe auto-open. */
+	private autoOpenRecipePendingPath: string | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -84,7 +86,21 @@ export default class PantryPlugin extends Plugin {
 
 		this.registerEvent(
 			this.app.workspace.on("file-open", (file) => {
-				if (!file) return;
+				if (!file) {
+					this.autoOpenRecipePendingPath = null;
+					return;
+				}
+				this.autoOpenRecipePendingPath = file.path;
+				this.maybeAutoOpenRecipe(file);
+			}),
+		);
+
+		this.registerEvent(
+			this.app.metadataCache.on("changed", (file) => {
+				if (!this.autoOpenRecipePendingPath) return;
+				if (file.path !== this.autoOpenRecipePendingPath) return;
+				const active = this.app.workspace.getActiveFile();
+				if (!active || active.path !== file.path) return;
 				this.maybeAutoOpenRecipe(file);
 			}),
 		);
@@ -260,13 +276,20 @@ export default class PantryPlugin extends Plugin {
 		const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
 		const property = this.settings.recipeTypeProperty.trim() || "type";
 		if (!recipeTypeMatches(fm[property], this.settings.recipeTypeValue)) {
+			if (cache?.frontmatter !== undefined) {
+				this.autoOpenRecipePendingPath = null;
+			}
 			return;
 		}
 
 		const leaf = this.app.workspace.getMostRecentLeaf();
 		if (!leaf) return;
-		if (leaf.view.getViewType() === VIEW_TYPE_RECIPE) return;
+		if (leaf.view.getViewType() === VIEW_TYPE_RECIPE) {
+			this.autoOpenRecipePendingPath = null;
+			return;
+		}
 
+		this.autoOpenRecipePendingPath = null;
 		void leaf.setViewState({
 			type: VIEW_TYPE_RECIPE,
 			state: { file: file.path },
