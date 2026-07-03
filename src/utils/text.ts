@@ -16,6 +16,41 @@ export function regexCapture(match: RegExpMatchArray, index: number): string {
 	return typeof value === "string" ? value : "";
 }
 
+/** Remove trailing whitespace without relying on ES2019 `trimEnd` typings. */
+export function trimEndText(text: string): string {
+	return text.replace(/\s+$/u, "");
+}
+
+/** Remove leading whitespace without relying on ES2019 `trimStart` typings. */
+export function trimStartText(text: string): string {
+	return text.replace(/^\s+/u, "");
+}
+
+/** Trim both ends without relying on lib gaps for string prototype methods. */
+export function trimText(text: string): string {
+	return text.replace(/^\s+|\s+$/u, "");
+}
+
+/**
+ * Invoke `fn` for each first capture group matched by `pattern` in `text`.
+ * Uses `exec` instead of ES2020 `matchAll` for consistent type-checked lint.
+ */
+export function forEachRegexCapture(
+	text: string,
+	pattern: RegExp,
+	fn: (capture: string) => void,
+): void {
+	const flags = pattern.flags.includes("g")
+		? pattern.flags
+		: `${pattern.flags}g`;
+	const re = new RegExp(pattern.source, flags);
+	let match = re.exec(text);
+	while (match !== null) {
+		fn(regexCapture(match, 1));
+		match = re.exec(text);
+	}
+}
+
 /**
  * Normalise a frontmatter value that may be an Obsidian wikilink.
  *

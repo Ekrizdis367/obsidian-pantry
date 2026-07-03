@@ -2,7 +2,7 @@ import { App, CachedMetadata, TFile } from "obsidian";
 import { PantrySettings, RECIPE_FRONTMATTER } from "../settings";
 import { listMarkdownFilesInRecipeFolders } from "../utils/vault-files";
 import { RecipeIngredient } from "../types";
-import { stripWikiLink, regexCapture } from "../utils/text";
+import { regexCapture, stripWikiLink, trimEndText, trimText } from "../utils/text";
 import { hasIgnoreTag, parseIngredientLine } from "./ingredient";
 
 /**
@@ -243,8 +243,8 @@ export function splitBodyAroundIngredients(
 		}
 	}
 
-	const before = lines.slice(0, headingIndex).join("\n").trimEnd();
-	const after = lines.slice(endIndex).join("\n").trim();
+	const before = trimEndText(lines.slice(0, headingIndex).join("\n"));
+	const after = trimText(lines.slice(endIndex).join("\n"));
 	return { before, ingredientLines, after };
 }
 
@@ -297,8 +297,8 @@ export function splitBodyAroundInstructions(
 	const sectionLines = lines.slice(headingIndex + 1, endIndex);
 	const steps = parseInstructionSteps(sectionLines);
 
-	const before = lines.slice(0, headingIndex).join("\n").trimEnd();
-	const after = lines.slice(endIndex).join("\n").trim();
+	const before = trimEndText(lines.slice(0, headingIndex).join("\n"));
+	const after = trimText(lines.slice(endIndex).join("\n"));
 	return { before, steps, after };
 }
 

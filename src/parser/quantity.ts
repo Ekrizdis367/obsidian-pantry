@@ -11,7 +11,7 @@
  *
  * Returns the parsed quantity (or null) along with the remaining text.
  */
-import { regexCapture } from "../utils/text";
+import { regexCapture, trimStartText } from "../utils/text";
 
 const UNICODE_FRACTIONS: Record<string, number> = {
 	"¼": 0.25,
@@ -102,7 +102,7 @@ export function parseLeadingQuantity(input: string): QuantityParseResult {
 		if (value !== undefined) {
 			return {
 				quantity: value,
-				rest: trimmed.slice(1).trimStart(),
+				rest: trimStartText(trimmed.slice(1)),
 			};
 		}
 	}

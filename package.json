@@ -1,6 +1,6 @@
 {
 	"name": "pantry",
-	"version": "1.2.2",
+	"version": "1.2.3",
 	"description": "Plan meals, generate grocery lists, and view recipe notes as interactive cards.",
 	"main": "main.js",
 	"type": "module",

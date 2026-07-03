@@ -1,4 +1,5 @@
 import { parseLeadingQuantity } from "../parser/quantity";
+import { forEachRegexCapture } from "../utils/text";
 import { ImportedRecipe } from "./types";
 
 /**
@@ -199,24 +200,20 @@ function parseHumanDuration(text: string): number | null {
 	const hourRe = /(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)\b/gi;
 	const minRe = /(\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|minutes)\b/gi;
 
-	for (const m of text.matchAll(hourRe)) {
-		const capture = m[1];
-		if (typeof capture !== "string") continue;
+	forEachRegexCapture(text, hourRe, (capture) => {
 		const n = Number(capture);
 		if (Number.isFinite(n)) {
 			minutes += n * 60;
 			matched = true;
 		}
-	}
-	for (const m of text.matchAll(minRe)) {
-		const capture = m[1];
-		if (typeof capture !== "string") continue;
+	});
+	forEachRegexCapture(text, minRe, (capture) => {
 		const n = Number(capture);
 		if (Number.isFinite(n)) {
 			minutes += n;
 			matched = true;
 		}
-	}
+	});
 
 	if (matched) {
 		const rounded = Math.round(minutes);

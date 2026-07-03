@@ -2,7 +2,7 @@ import { groupForDisplay } from "./aggregator";
 import { formatQuantity } from "../parser/quantity";
 import { PantrySettings } from "../settings";
 import { GroceryItem } from "../types";
-import { toTitleCase } from "../utils/text";
+import { toTitleCase, trimEndText } from "../utils/text";
 
 export type ExportFormat = "plain" | "checklist" | "grouped";
 
@@ -73,7 +73,7 @@ function renderGrouped(
 		}
 		out.push("");
 	}
-	const text = out.join("\n").trimEnd();
+	const text = trimEndText(out.join("\n"));
 	return text;
 }
 

@@ -4,6 +4,7 @@ import {
 	MEAL_PLAN_MARKER,
 	PantrySettings,
 } from "../settings";
+import { trimEndText } from "../utils/text";
 
 /**
  * A single recipe appearance inside a meal-plan note. Each wikilink to a
@@ -176,6 +177,6 @@ export function serializeMealPlanGrid(
 		}
 		lines.push("");
 	}
-	const body = lines.join("\n").trimEnd();
+	const body = trimEndText(lines.join("\n"));
 	return `${body}\n`;
 }
