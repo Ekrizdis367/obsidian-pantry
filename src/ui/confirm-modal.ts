@@ -34,9 +34,13 @@ export class ConfirmModal extends Modal {
 		});
 		confirm.addEventListener("click", () => {
 			confirm.disabled = true;
-			void Promise.resolve(this.options.onConfirm()).finally(() =>
-				this.close(),
-			);
+			void (async () => {
+				try {
+					await this.options.onConfirm();
+				} finally {
+					this.close();
+				}
+			})();
 		});
 	}
 

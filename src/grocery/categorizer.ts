@@ -108,7 +108,9 @@ interface CompiledEntry {
 
 const COMPILED_BUILTINS: CompiledEntry[] = (() => {
 	const entries: CompiledEntry[] = [];
-	for (const [category, keywords] of Object.entries(BUILTIN_CATEGORIES)) {
+	for (const category of Object.keys(BUILTIN_CATEGORIES)) {
+		const keywords = BUILTIN_CATEGORIES[category];
+		if (!keywords) continue;
 		for (const keyword of keywords) {
 			entries.push({ keyword: keyword.toLowerCase(), category });
 		}

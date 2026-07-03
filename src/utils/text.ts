@@ -10,6 +10,12 @@ export function toTitleCase(name: string): string {
 	);
 }
 
+/** Captured regex group as a string (empty when the group is missing). */
+export function regexCapture(match: RegExpMatchArray, index: number): string {
+	const value = match[index];
+	return typeof value === "string" ? value : "";
+}
+
 /**
  * Normalise a frontmatter value that may be an Obsidian wikilink.
  *

@@ -234,13 +234,17 @@ interface PreparedKeyword {
 	length: number;
 }
 
-const PREPARED_KEYWORDS: PreparedKeyword[] = MEAT_GROUPS.flatMap((group) =>
-	group.keywords.map((keyword) => ({
-		regex: buildKeywordRegex(keyword),
-		temp: group.temp,
-		length: keyword.length,
-	})),
-).sort((a, b) => b.length - a.length);
+const PREPARED_KEYWORDS: PreparedKeyword[] = [];
+for (const group of MEAT_GROUPS) {
+	for (const keyword of group.keywords) {
+		PREPARED_KEYWORDS.push({
+			regex: buildKeywordRegex(keyword),
+			temp: group.temp,
+			length: keyword.length,
+		});
+	}
+}
+PREPARED_KEYWORDS.sort((a, b) => b.length - a.length);
 
 const NON_MEAT_REGEX = new RegExp(
 	`\\b(?:${NON_MEAT_QUALIFIERS.map(escapeRegex).join("|")})\\b`,

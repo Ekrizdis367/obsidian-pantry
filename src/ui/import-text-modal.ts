@@ -87,9 +87,13 @@ export class ImportTextModal extends Modal {
 		});
 		importBtn.addEventListener("click", () => {
 			importBtn.disabled = true;
-			void this.submit().finally(() => {
-				importBtn.disabled = false;
-			});
+			void (async () => {
+				try {
+					await this.submit();
+				} finally {
+					importBtn.disabled = false;
+				}
+			})();
 		});
 	}
 

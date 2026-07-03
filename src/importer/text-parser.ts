@@ -200,14 +200,18 @@ function parseHumanDuration(text: string): number | null {
 	const minRe = /(\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|minutes)\b/gi;
 
 	for (const m of text.matchAll(hourRe)) {
-		const n = Number(m[1]);
+		const capture = m[1];
+		if (typeof capture !== "string") continue;
+		const n = Number(capture);
 		if (Number.isFinite(n)) {
 			minutes += n * 60;
 			matched = true;
 		}
 	}
 	for (const m of text.matchAll(minRe)) {
-		const n = Number(m[1]);
+		const capture = m[1];
+		if (typeof capture !== "string") continue;
+		const n = Number(capture);
 		if (Number.isFinite(n)) {
 			minutes += n;
 			matched = true;

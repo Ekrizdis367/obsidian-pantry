@@ -1,5 +1,9 @@
 import { App, TFile } from "obsidian";
-import { readCookedCount, readLastMade } from "../parser/recipe-meta";
+import {
+	formatLocalISO,
+	readCookedCount,
+	readLastMade,
+} from "../parser/recipe-meta";
 import { PantrySettings, RECIPE_FRONTMATTER } from "../settings";
 
 /**
@@ -26,7 +30,7 @@ export async function setRecipeSelection(
 			if (!settings.trackLastMade) return;
 
 			const key = settings.lastMadeProperty.trim() || "lastMade";
-			const today = todayLocalISO();
+			const today = formatLocalISO(new Date());
 			const previous = readLastMade(fm, key);
 			fm[key] = today;
 
@@ -36,13 +40,4 @@ export async function setRecipeSelection(
 			}
 		},
 	);
-}
-
-/** YYYY-MM-DD in the user's local time (so a late-night cook still says "today"). */
-function todayLocalISO(): string {
-	const d = new Date();
-	const y = d.getFullYear();
-	const m = String(d.getMonth() + 1).padStart(2, "0");
-	const day = String(d.getDate()).padStart(2, "0");
-	return `${y}-${m}-${day}`;
 }

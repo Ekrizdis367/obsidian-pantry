@@ -176,5 +176,6 @@ export function serializeMealPlanGrid(
 		}
 		lines.push("");
 	}
-	return lines.join("\n").trimEnd() + "\n";
+	const body = lines.join("\n").trimEnd();
+	return `${body}\n`;
 }

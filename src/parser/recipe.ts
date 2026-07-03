@@ -2,7 +2,7 @@ import { App, CachedMetadata, TFile } from "obsidian";
 import { PantrySettings, RECIPE_FRONTMATTER } from "../settings";
 import { listMarkdownFilesInRecipeFolders } from "../utils/vault-files";
 import { RecipeIngredient } from "../types";
-import { stripWikiLink } from "../utils/text";
+import { stripWikiLink, regexCapture } from "../utils/text";
 import { hasIgnoreTag, parseIngredientLine } from "./ingredient";
 
 /**
@@ -49,7 +49,7 @@ export function isRecipeSelected(
 	cache: CachedMetadata | null,
 	property: string,
 ): boolean {
-	const fm = cache?.frontmatter as Record<string, unknown> | undefined;
+	const fm = cache?.frontmatter;
 	if (!fm) return false;
 	const value: unknown = fm[property];
 	if (value === undefined || value === null) return false;
@@ -173,7 +173,7 @@ export async function parseRecipeFile(
  * Returns 1 when missing, zero, negative, or unparseable.
  */
 export function readRecipeMultiplier(cache: CachedMetadata | null): number {
-	const fm = cache?.frontmatter as Record<string, unknown> | undefined;
+	const fm = cache?.frontmatter;
 	if (!fm) return 1;
 	const raw: unknown = fm[RECIPE_FRONTMATTER.multiplier];
 	if (raw === undefined || raw === null) return 1;
@@ -216,8 +216,8 @@ export function splitBodyAroundIngredients(
 	for (let i = 0; i < lines.length; i++) {
 		const match = (lines[i] ?? "").match(headingPattern);
 		if (!match) continue;
-		const level = (match[1] ?? "").length;
-		const title = (match[2] ?? "").trim().toLowerCase();
+		const level = regexCapture(match, 1).length;
+		const title = regexCapture(match, 2).trim().toLowerCase();
 		if (title === target) {
 			headingIndex = i;
 			headingLevel = level;
@@ -234,7 +234,7 @@ export function splitBodyAroundIngredients(
 	for (let i = headingIndex + 1; i < lines.length; i++) {
 		const line = lines[i] ?? "";
 		const heading = line.match(headingPattern);
-		if (heading && (heading[1] ?? "").length <= headingLevel) {
+		if (heading && regexCapture(heading, 1).length <= headingLevel) {
 			endIndex = i;
 			break;
 		}
@@ -272,8 +272,8 @@ export function splitBodyAroundInstructions(
 	for (let i = 0; i < lines.length; i++) {
 		const match = (lines[i] ?? "").match(headingPattern);
 		if (!match) continue;
-		const level = (match[1] ?? "").length;
-		const title = (match[2] ?? "").trim().toLowerCase();
+		const level = regexCapture(match, 1).length;
+		const title = regexCapture(match, 2).trim().toLowerCase();
 		if (title === target) {
 			headingIndex = i;
 			headingLevel = level;
@@ -288,7 +288,7 @@ export function splitBodyAroundInstructions(
 	let endIndex = lines.length;
 	for (let i = headingIndex + 1; i < lines.length; i++) {
 		const heading = (lines[i] ?? "").match(headingPattern);
-		if (heading && (heading[1] ?? "").length <= headingLevel) {
+		if (heading && regexCapture(heading, 1).length <= headingLevel) {
 			endIndex = i;
 			break;
 		}
@@ -310,7 +310,7 @@ function parseInstructionSteps(sectionLines: string[]): string[] {
 		const out: { idx: number; first: string }[] = [];
 		for (let i = 0; i < sectionLines.length; i++) {
 			const m = (sectionLines[i] ?? "").match(re);
-			if (m) out.push({ idx: i, first: m[1] ?? "" });
+			if (m) out.push({ idx: i, first: regexCapture(m, 1) });
 		}
 		return out;
 	};

@@ -11,6 +11,8 @@
  *
  * Returns the parsed quantity (or null) along with the remaining text.
  */
+import { regexCapture } from "../utils/text";
+
 const UNICODE_FRACTIONS: Record<string, number> = {
 	"¼": 0.25,
 	"½": 0.5,
@@ -44,9 +46,13 @@ export function parseLeadingQuantity(input: string): QuantityParseResult {
 	// Adjacent unicode fraction with whole number, no space: "2½ cups"
 	const adjacentUnicode = trimmed.match(/^(\d+)([¼½¾⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])\s*(.*)$/);
 	if (adjacentUnicode) {
-		const whole = Number(adjacentUnicode[1]);
-		const frac = UNICODE_FRACTIONS[adjacentUnicode[2] ?? ""] ?? 0;
-		return { quantity: whole + frac, rest: adjacentUnicode[3] ?? "" };
+		const whole = Number(regexCapture(adjacentUnicode, 1));
+		const fracChar = regexCapture(adjacentUnicode, 2);
+		const frac = UNICODE_FRACTIONS[fracChar] ?? 0;
+		return {
+			quantity: whole + frac,
+			rest: regexCapture(adjacentUnicode, 3),
+		};
 	}
 
 	// Mixed fraction: "1 1/2"
@@ -54,11 +60,14 @@ export function parseLeadingQuantity(input: string): QuantityParseResult {
 		new RegExp(`^(\\d+)\\s+(\\d+)${FRACTION_SLASH}(\\d+)\\b\\s*(.*)$`),
 	);
 	if (mixed) {
-		const whole = Number(mixed[1]);
-		const num = Number(mixed[2]);
-		const den = Number(mixed[3]);
+		const whole = Number(regexCapture(mixed, 1));
+		const num = Number(regexCapture(mixed, 2));
+		const den = Number(regexCapture(mixed, 3));
 		if (den !== 0) {
-			return { quantity: whole + num / den, rest: mixed[4] ?? "" };
+			return {
+				quantity: whole + num / den,
+				rest: regexCapture(mixed, 4),
+			};
 		}
 	}
 
@@ -67,22 +76,28 @@ export function parseLeadingQuantity(input: string): QuantityParseResult {
 		new RegExp(`^(\\d+)${FRACTION_SLASH}(\\d+)\\b\\s*(.*)$`),
 	);
 	if (fraction) {
-		const num = Number(fraction[1]);
-		const den = Number(fraction[2]);
+		const num = Number(regexCapture(fraction, 1));
+		const den = Number(regexCapture(fraction, 2));
 		if (den !== 0) {
-			return { quantity: num / den, rest: fraction[3] ?? "" };
+			return {
+				quantity: num / den,
+				rest: regexCapture(fraction, 3),
+			};
 		}
 	}
 
 	// Decimal or integer: "1.5" / "2"
 	const numeric = trimmed.match(/^(\d+(?:\.\d+)?)\b\s*(.*)$/);
 	if (numeric) {
-		return { quantity: Number(numeric[1]), rest: numeric[2] ?? "" };
+		return {
+			quantity: Number(regexCapture(numeric, 1)),
+			rest: regexCapture(numeric, 2),
+		};
 	}
 
 	// Leading unicode fraction (with optional whole number prefix).
 	const firstChar = trimmed[0];
-	if (firstChar !== undefined && UNICODE_FRACTIONS[firstChar] !== undefined) {
+	if (firstChar !== undefined) {
 		const value = UNICODE_FRACTIONS[firstChar];
 		if (value !== undefined) {
 			return {
@@ -95,7 +110,7 @@ export function parseLeadingQuantity(input: string): QuantityParseResult {
 	// "a" / "an" -> 1, only when followed by a space and at least one more word.
 	const article = trimmed.match(/^(a|an)\s+(\S.*)$/i);
 	if (article) {
-		return { quantity: 1, rest: article[2] ?? "" };
+		return { quantity: 1, rest: regexCapture(article, 2) };
 	}
 
 	return { quantity: null, rest: trimmed };

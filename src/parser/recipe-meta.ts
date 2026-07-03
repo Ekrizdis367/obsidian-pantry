@@ -196,9 +196,11 @@ export function readLastMade(
 
 export function formatLocalISO(d: Date): string {
 	const y = d.getFullYear();
-	const m = String(d.getMonth() + 1).padStart(2, "0");
-	const day = String(d.getDate()).padStart(2, "0");
-	return `${y}-${m}-${day}`;
+	const m = d.getMonth() + 1;
+	const day = d.getDate();
+	const mm = m < 10 ? `0${m}` : `${m}`;
+	const dd = day < 10 ? `0${day}` : `${day}`;
+	return `${y}-${mm}-${dd}`;
 }
 
 /** Format an integer minute count as e.g. "15m", "1h", "1h 20m". */

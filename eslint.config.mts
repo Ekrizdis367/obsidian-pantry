@@ -10,12 +10,7 @@ export default tseslint.config(
 				...globals.browser,
 			},
 			parserOptions: {
-				projectService: {
-					allowDefaultProject: [
-						'eslint.config.js',
-						'manifest.json'
-					]
-				},
+				project: "./tsconfig.json",
 				tsconfigRootDir: import.meta.dirname,
 				extraFileExtensions: ['.json']
 			},

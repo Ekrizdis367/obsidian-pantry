@@ -73,7 +73,8 @@ function renderGrouped(
 		}
 		out.push("");
 	}
-	return out.join("\n").trimEnd();
+	const text = out.join("\n").trimEnd();
+	return text;
 }
 
 function renderLine(
