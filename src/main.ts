@@ -152,10 +152,7 @@ export default class PantryPlugin extends Plugin {
 
 	onunload(): void {
 		// Leaves are detached automatically by Obsidian on unload.
-		if (this.autoOpenRecipeTimer !== null) {
-			window.clearTimeout(this.autoOpenRecipeTimer);
-			this.autoOpenRecipeTimer = null;
-		}
+		this.clearAutoOpenRecipeTimer();
 	}
 
 	async loadSettings(): Promise<void> {
@@ -233,6 +230,9 @@ export default class PantryPlugin extends Plugin {
 	}
 
 	async openLeafInMarkdown(leaf: WorkspaceLeaf): Promise<void> {
+		// Cancel any in-flight auto-open retries so they don't fight the
+		// user's explicit switch back to Markdown.
+		this.clearAutoOpenRecipeTimer();
 		const view = leaf.view;
 		const file =
 			view instanceof RecipeView
@@ -305,13 +305,11 @@ export default class PantryPlugin extends Plugin {
 
 	/**
 	 * Swaps the active leaf to the recipe view after Obsidian's file-open
-	 * state settles. Stops once it succeeds, times out, or the active file 
+	 * state settles. Stops once it succeeds, times out, or the active file
 	 * changes.
 	 */
 	private scheduleRecipeViewSwap(file: TFile): void {
-		if (this.autoOpenRecipeTimer !== null) {
-			window.clearTimeout(this.autoOpenRecipeTimer);
-		}
+		this.clearAutoOpenRecipeTimer();
 		let attempts = 0;
 		const trySwap = (): void => {
 			this.autoOpenRecipeTimer = null;
@@ -333,6 +331,12 @@ export default class PantryPlugin extends Plugin {
 			}
 		};
 		this.autoOpenRecipeTimer = window.setTimeout(trySwap, 0);
+	}
+
+	private clearAutoOpenRecipeTimer(): void {
+		if (this.autoOpenRecipeTimer === null) return;
+		window.clearTimeout(this.autoOpenRecipeTimer);
+		this.autoOpenRecipeTimer = null;
 	}
 }
 
