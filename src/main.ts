@@ -21,11 +21,17 @@ import { MealPlannerView, VIEW_TYPE_MEAL_PLANNER } from "./ui/planner-view";
 import { RecipeView, VIEW_TYPE_RECIPE } from "./ui/recipe-view";
 import { GroceryListView, VIEW_TYPE_GROCERY_LIST } from "./ui/view";
 
+/** Re-assert cadence for the recipe-view swap, and how many times to try. */
+const AUTO_OPEN_RETRY_MS = 30;
+const AUTO_OPEN_MAX_ATTEMPTS = 6;
+
 export default class PantryPlugin extends Plugin {
 	settings!: PantrySettings;
 	manager!: GroceryListManager;
 	/** Vault path awaiting a metadata-cache retry for recipe auto-open. */
 	private autoOpenRecipePendingPath: string | null = null;
+	/** Pending deferred recipe-view swap, so it can be cancelled/superseded. */
+	private autoOpenRecipeTimer: number | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -146,6 +152,10 @@ export default class PantryPlugin extends Plugin {
 
 	onunload(): void {
 		// Leaves are detached automatically by Obsidian on unload.
+		if (this.autoOpenRecipeTimer !== null) {
+			window.clearTimeout(this.autoOpenRecipeTimer);
+			this.autoOpenRecipeTimer = null;
+		}
 	}
 
 	async loadSettings(): Promise<void> {
@@ -290,11 +300,39 @@ export default class PantryPlugin extends Plugin {
 		}
 
 		this.autoOpenRecipePendingPath = null;
-		void leaf.setViewState({
-			type: VIEW_TYPE_RECIPE,
-			state: { file: file.path },
-			active: true,
-		});
+		this.scheduleRecipeViewSwap(file);
+	}
+
+	/**
+	 * Swaps the active leaf to the recipe view after Obsidian's file-open
+	 * state settles. Stops once it succeeds, times out, or the active file 
+	 * changes.
+	 */
+	private scheduleRecipeViewSwap(file: TFile): void {
+		if (this.autoOpenRecipeTimer !== null) {
+			window.clearTimeout(this.autoOpenRecipeTimer);
+		}
+		let attempts = 0;
+		const trySwap = (): void => {
+			this.autoOpenRecipeTimer = null;
+			if (this.app.workspace.getActiveFile()?.path !== file.path) return;
+			const leaf = this.app.workspace.getMostRecentLeaf();
+			if (!leaf) return;
+			// Already showing the recipe view — the swap stuck, nothing to do.
+			if (leaf.view.getViewType() === VIEW_TYPE_RECIPE) return;
+			void leaf.setViewState({
+				type: VIEW_TYPE_RECIPE,
+				state: { file: file.path },
+				active: true,
+			});
+			if (++attempts < AUTO_OPEN_MAX_ATTEMPTS) {
+				this.autoOpenRecipeTimer = window.setTimeout(
+					trySwap,
+					AUTO_OPEN_RETRY_MS,
+				);
+			}
+		};
+		this.autoOpenRecipeTimer = window.setTimeout(trySwap, 0);
 	}
 }
 
