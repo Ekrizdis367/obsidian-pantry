@@ -36,7 +36,7 @@ export interface SettingsHost {
 /**
  * Settings tab with Path B dual support:
  * - Obsidian 1.13+: `getSettingDefinitions()` drives UI + settings search.
- * - Older Obsidian: `display()` keeps the imperative layout.
+ * - `display()` remains as a fallback implementation (minAppVersion is 1.13.0).
  */
 export class PantrySettingsTab extends PluginSettingTab {
 	constructor(
@@ -280,14 +280,9 @@ export class PantrySettingsTab extends PluginSettingTab {
 		this.renderSettings();
 	}
 
-	/** Re-render after structural setting changes (works on 1.12 and 1.13+). */
+	/** Re-render after structural setting changes. */
 	private reloadSettings(): void {
-		const tab = this as PluginSettingTab & { update?: () => void };
-		if (typeof tab.update === "function") {
-			tab.update();
-			return;
-		}
-		this.renderSettings();
+		this.update();
 	}
 
 	private renderSettings(): void {
