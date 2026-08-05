@@ -17,8 +17,8 @@ Recipe view with hero image, scaled ingredients, instructions, and portion multi
 - **Recipes-as-source-of-truth.** Mark any recipe note with a single boolean frontmatter property to add it to this week's list.
 - **Automatic consolidation.** Ingredients shared across recipes are merged. `1 cup milk` + `2 cups milk` becomes `3 cup milk`.
 - **Smart grouping.** Items are grouped by category (Produce, Dairy & Eggs, Pantry, ...) so the list matches the layout of your store. Switch to by-recipe or a flat list at any time.
-- **One-off items.** Add anything that isn't tied to a recipe (paper towels, snacks). One-offs live alongside recipe items and clear with the rest of the list.
-- **Persistent checkboxes.** Tick items off as you shop. Your progress survives restarts until you officially clear the list.
+- **One-off items.** Add anything that isn't tied to a recipe (paper towels, snacks). One-offs live alongside recipe items and clear with the rest of the list. They are stored in a vault JSON file (`Pantry/shopping-state.json` by default) so they sync across devices with your notes — unlike plugin settings, which are device-local.
+- **Persistent checkboxes.** Tick items off as you shop. Your progress survives restarts and syncs across devices until you officially clear the list.
 - **Collapsible sections.** Click any section header to collapse or expand it. Sections you finish shopping auto-collapse so the next aisle stays in view (toggleable in settings).
 - **Custom recipe view.** Notes flagged with a configurable type property (`type: recipe` by default, and wikilink values like `[[Recipes]]` are recognised) open in a dedicated view with a hero image, nutrition card, an instructions panel, meat-temperature warnings, and a portion multiplier that scales both the displayed quantities *and* the grocery list.
 - **Diet & cooking-time badges.** Add `diet`, `prepTime`, and `cookTime` to the frontmatter and the recipe view shows them as quick-glance badges below the title.
@@ -43,6 +43,7 @@ Recipe view with hero image, scaled ingredients, instructions, and portion multi
    - **Recipe folders** — vault folders to scan (leave blank to scan everything).
    - **Selection property** — the frontmatter field that marks a recipe for the week (default: `groceryList`).
    - **Ingredients heading** — the heading that introduces each recipe's ingredient list (default: `Ingredients`).
+   - **Shopping state file** — vault JSON used for one-offs and checkmarks (default: `Pantry/shopping-state.json`); keep this in the vault so it syncs across devices.
 3. Tag a recipe note for the week:
    ```markdown
    ---
@@ -64,7 +65,7 @@ Recipe view with hero image, scaled ingredients, instructions, and portion multi
 
 The plugin looks for the configured **Ingredients heading** (any level) inside each selected recipe and parses every list item beneath it as an ingredient. If no matching heading is found, every list item in the file is parsed.
 
-Each ingredient line is interpreted as `[quantity] [unit] [name]`. Supported quantities include whole numbers, decimals, simple fractions (`1/2`), mixed fractions (`1 1/2`), and unicode fractions (`½`). Common units (cup, tbsp, tsp, oz, lb, g, kg, can, clove, bunch, ...) are recognised and normalised so plurals consolidate. Trailing parentheticals like `(diced)` are stripped before consolidation.
+Each ingredient line is interpreted as `[quantity] [unit] [name]`. Supported quantities include whole numbers, decimals, simple fractions (`1/2`), mixed fractions (`1 1/2`), and unicode fractions (`½`). Common units (cup, tbsp, tsp, oz, lb, g, kg, can, clove, bunch, ...) are recognised and normalised so plurals consolidate. Trailing parentheticals like `(diced)` or `(softened)` are stripped from the name before grocery-list consolidation, but the recipe view keeps them and shows them in italic after the ingredient name.
 
 Lines without a recognisable quantity (`salt to taste`) still appear on the list - they just won't aggregate quantities.
 
@@ -84,7 +85,7 @@ The tag is matched case-insensitively; `#ignoreingredient`, `#ignore-ingredient`
 
 Pantry ships a custom view for recipe notes. To opt a note in, add `type: recipe` to its frontmatter. Both the property name and the value it's matched against are configurable in **Settings → Recipe view** (set **Recipe type property** to `category`, `kind`, etc. if you don't use `type`). Matching is case-insensitive, and wikilink values such as `type: [[Recipes]]` are matched against the linked note's name — so the property picker's linked values work too. When auto-open is on (the default), opening such a note switches the leaf into the recipe view automatically. If frontmatter is not ready the instant the file opens, Pantry retries once Obsidian finishes parsing YAML. After that, Pantry briefly re-asserts the recipe view so Obsidian's own Markdown leaf update cannot overwrite it on warm opens. You can always switch back with the **Edit as Markdown** button in the view's action bar, the **Recipe mode** entry in the pane's three-dot menu, or the **Open as Markdown** command.
 
-The view shows a meta banner with the multiplier, servings, and nutrition; a hero image card; a tabular ingredients list with safe-cooking-temperature badges next to detected meats; and a numbered instructions card. The meta banner also includes a favorite star, **kids approved** thumbs-up / thumbs-down controls, and the add-to-grocery-list toggle.
+The view shows a meta banner with the multiplier, servings, and nutrition; a hero image card; a tabular ingredients list with safe-cooking-temperature badges next to detected meats; and a numbered instructions card. Trailing parentheticals on ingredient lines (e.g. `(softened)`) appear in italic after the ingredient name. The meta banner also includes a favorite star, **kids approved** thumbs-up / thumbs-down controls, and the add-to-grocery-list toggle.
 
 If a recipe both embeds its photo inline and points to the same file via the `image` frontmatter, enable **Settings → Recipe view → Suppress duplicate inline image** to hide the first inline copy that matches the frontmatter image so it only renders once (off by default).
 

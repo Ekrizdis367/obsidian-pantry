@@ -848,10 +848,30 @@
 	color: var(--text-faint);
 }
 
-.pantry-recipe-ingredient-name {
-	color: var(--text-normal);
+.pantry-recipe-ingredient-main {
 	min-width: 0;
 	word-break: break-word;
+}
+
+.pantry-recipe-ingredient-name {
+	color: var(--text-normal);
+}
+
+.pantry-recipe-ingredient-note {
+	margin-left: 0.45em;
+	padding: 0.05em 0.4em;
+	border-radius: var(--radius-s);
+	font-style: italic;
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-medium);
+	letter-spacing: 0.01em;
+	color: var(--text-accent);
+	background-color: color-mix(
+		in srgb,
+		var(--text-accent) 12%,
+		var(--background-secondary)
+	);
+	white-space: normal;
 }
 
 .pantry-recipe-ingredient-temp {

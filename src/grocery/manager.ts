@@ -30,8 +30,9 @@ export interface PlannedRecipeEntry {
 
 /**
  * Owns the in-memory grocery list and broadcasts change events so views can
- * re-render. All persistence funnels through `sink.save()` which is expected
- * to write the plugin data file.
+ * re-render. Persistence funnels through `sink.save()`, which writes shopping
+ * list state to a vault JSON file (so it syncs across devices) and plugin
+ * settings to data.json.
  */
 export class GroceryListManager extends Events {
 	private items: GroceryItem[] = [];

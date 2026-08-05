@@ -5,6 +5,12 @@ export interface ParsedIngredient {
 	unit: string;
 	/** Normalised ingredient name, lower-cased and trimmed. */
 	name: string;
+	/**
+	 * Trailing parenthetical prep note, e.g. "softened" from
+	 * `1 cup unsalted butter (softened)`. Null when absent. Kept for display
+	 * (recipe view) but excluded from the name used for grocery consolidation.
+	 */
+	note: string | null;
 	/** Trailing Obsidian-style tags found on the line (without the leading #). */
 	tags: string[];
 	/** Original raw line (without leading bullet markers). */

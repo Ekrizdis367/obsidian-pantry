@@ -885,10 +885,19 @@ export class RecipeView extends TextFileView {
 			});
 			if (!qtyDisplay) qtyEl.addClass("is-empty");
 
-			li.createSpan({
+			const mainEl = li.createSpan({
+				cls: "pantry-recipe-ingredient-main",
+			});
+			mainEl.createSpan({
 				cls: "pantry-recipe-ingredient-name",
 				text: titleCase(parsed.name),
 			});
+			if (parsed.note) {
+				mainEl.createSpan({
+					cls: "pantry-recipe-ingredient-note",
+					text: `(${parsed.note})`,
+				});
+			}
 
 			const meatTemp = detectMeatTemp(parsed.name);
 			if (meatTemp) {

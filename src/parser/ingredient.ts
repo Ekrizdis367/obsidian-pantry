@@ -118,9 +118,18 @@ function stripListMarkers(line: string): string {
 	return out;
 }
 
-/** Drop trailing parenthetical notes like "(optional)" or "(diced)". */
-function stripTrailingNotes(text: string): string {
-	return text.replace(/\s*\([^)]*\)\s*$/g, "").trim();
+/** Pull a trailing parenthetical note like "(optional)" or "(diced)". */
+function extractTrailingNotes(text: string): {
+	text: string;
+	note: string | null;
+} {
+	const match = text.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+	if (!match) return { text: text.trim(), note: null };
+	const before = (match[1] ?? "").trim();
+	const note = (match[2] ?? "").trim();
+	// A line that is only a parenthetical has no ingredient name to keep.
+	if (!before) return { text: text.trim(), note: null };
+	return { text: before, note: note || null };
 }
 
 /**
@@ -201,7 +210,7 @@ export function parseIngredientLine(line: string): ParsedIngredient | null {
 
 	const deemphasised = stripMarkdownEmphasis(cleaned);
 	const { text: withoutTags, tags } = extractTrailingTags(deemphasised);
-	const withoutNotes = stripTrailingNotes(withoutTags);
+	const { text: withoutNotes, note } = extractTrailingNotes(withoutTags);
 	if (!withoutNotes) return null;
 
 	const { quantity, rest: afterQty } = parseLeadingQuantity(withoutNotes);
@@ -228,6 +237,7 @@ export function parseIngredientLine(line: string): ParsedIngredient | null {
 		quantity,
 		unit,
 		name: normaliseName(name),
+		note,
 		tags,
 		raw: cleaned,
 	};

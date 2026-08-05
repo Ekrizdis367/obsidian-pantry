@@ -6,6 +6,9 @@ import {
 	OneOffItem,
 } from "./types";
 
+/** Default vault-relative path for cross-device shopping list state. */
+export const DEFAULT_SHOPPING_STATE_PATH = "Pantry/shopping-state.json";
+
 export interface PantrySettings {
 	/** Folder paths (vault-relative) to scan for recipes. Empty array = entire vault. */
 	recipeFolders: string[];
@@ -69,7 +72,16 @@ export interface PantrySettings {
 	importFolder: string;
 	/** Optional vault note used as the import template. Empty = built-in Pantry template. */
 	importTemplatePath: string;
-	/** Persisted state - kept in the same data file so a single saveData() round-trip is enough. */
+	/**
+	 * Vault-relative JSON file for one-offs, checks, and collapsed sections.
+	 * Lives in the vault (not plugin data.json) so Obsidian Sync / folder sync
+	 * keeps shopping list state in sync across devices.
+	 */
+	shoppingStatePath: string;
+	/**
+	 * In-memory shopping list runtime state. Persisted to {@link shoppingStatePath}
+	 * in the vault — not to plugin data.json.
+	 */
 	state: PantrySavedState;
 }
 
@@ -225,6 +237,7 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 	autoFillMealProperty: "meal",
 	importFolder: "",
 	importTemplatePath: "",
+	shoppingStatePath: DEFAULT_SHOPPING_STATE_PATH,
 	state: {
 		oneOffs: [],
 		checkedKeys: {},

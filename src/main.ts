@@ -8,6 +8,17 @@ import {
 } from "obsidian";
 import { registerCommands } from "./commands";
 import { GroceryListManager, SaveSink } from "./grocery/manager";
+import {
+	DEFAULT_SHOPPING_STATE_PATH,
+	emptyShoppingState,
+	mergeShoppingState,
+	parseShoppingState,
+	readShoppingStateFile,
+	resolveShoppingStatePath,
+	serializeShoppingState,
+	shoppingStateHasContent,
+	writeShoppingStateFile,
+} from "./grocery/shopping-state";
 import { recipeTypeMatches } from "./parser/recipe";
 import {
 	DEFAULT_CATEGORY_ORDER,
@@ -32,9 +43,15 @@ export default class PantryPlugin extends Plugin {
 	private autoOpenRecipePendingPath: string | null = null;
 	/** Pending deferred recipe-view swap, so it can be cancelled/superseded. */
 	private autoOpenRecipeTimer: number | null = null;
+	/**
+	 * Last content we wrote to the shopping-state file. Used to ignore our own
+	 * vault modify events so a self-write does not trigger a redundant reload.
+	 */
+	private shoppingStateWriteToken: string | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
+		await this.loadShoppingState();
 
 		const sink: SaveSink = makeSaveSink(this);
 		this.manager = new GroceryListManager(this.app, sink);
@@ -120,12 +137,14 @@ export default class PantryPlugin extends Plugin {
 			),
 		);
 
-		this.addSettingTab(new PantrySettingsTab(this, {
-			app: this.app,
-			settings: this.settings,
-			saveSettings: () => this.saveSettings(),
-			manager: this.manager,
-		}));
+		this.addSettingTab(
+			new PantrySettingsTab(this, {
+				settings: this.settings,
+				saveSettings: () => this.saveSettings(),
+				manager: this.manager,
+				reloadShoppingState: () => this.loadShoppingState(),
+			}),
+		);
 
 		const refresh = debounce(
 			() => {
@@ -139,10 +158,40 @@ export default class PantryPlugin extends Plugin {
 			this.app.metadataCache.on("changed", () => refresh()),
 		);
 		this.registerEvent(
-			this.app.vault.on("delete", () => refresh()),
+			this.app.vault.on("delete", (file) => {
+				if (this.isShoppingStateFile(file)) {
+					this.settings.state = emptyShoppingState();
+					void this.manager.refresh();
+					return;
+				}
+				refresh();
+			}),
 		);
 		this.registerEvent(
-			this.app.vault.on("rename", () => refresh()),
+			this.app.vault.on("rename", (file, oldPath) => {
+				if (this.isShoppingStatePath(oldPath)) {
+					if (file instanceof TFile) {
+						this.settings.shoppingStatePath = file.path;
+						void this.saveSettings();
+					}
+					return;
+				}
+				refresh();
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on("modify", (file) => {
+				if (!(file instanceof TFile)) return;
+				if (!this.isShoppingStateFile(file)) return;
+				void this.onShoppingStateFileModified(file);
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on("create", (file) => {
+				if (!(file instanceof TFile)) return;
+				if (!this.isShoppingStateFile(file)) return;
+				void this.onShoppingStateFileModified(file);
+			}),
 		);
 
 		this.app.workspace.onLayoutReady(() => {
@@ -156,14 +205,87 @@ export default class PantryPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		const raw = (await this.loadData()) as
-			| Partial<PantrySettings>
-			| null;
+		const raw = (await this.loadData()) as Partial<PantrySettings> | null;
 		this.settings = mergeSettings(raw);
 	}
 
+	/**
+	 * Persist plugin settings to data.json. Shopping-list runtime state is
+	 * stripped so it is not stored device-locally; that state lives in the
+	 * vault via {@link saveShoppingState}.
+	 */
 	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
+		await this.saveData(settingsForDisk(this.settings));
+	}
+
+	/**
+	 * Load one-offs / checks / collapsed sections from the vault JSON file.
+	 * Migrates legacy state out of data.json on first run after the upgrade,
+	 * merging per-device leftovers so nothing is dropped when Sync catches up.
+	 */
+	async loadShoppingState(): Promise<void> {
+		const path = resolveShoppingStatePath(this.settings.shoppingStatePath);
+		this.settings.shoppingStatePath = path;
+		const legacy = this.settings.state;
+		const hadLegacy = shoppingStateHasContent(legacy);
+		const fromVault = await readShoppingStateFile(this.app, path);
+		if (fromVault) {
+			this.settings.state = hadLegacy
+				? mergeShoppingState(fromVault, legacy)
+				: fromVault;
+			if (
+				hadLegacy &&
+				serializeShoppingState(this.settings.state) !==
+					serializeShoppingState(fromVault)
+			) {
+				await this.saveShoppingState();
+			}
+			// Drop any legacy copy still sitting in data.json.
+			await this.saveSettings();
+			return;
+		}
+
+		// No vault file yet — keep whatever mergeSettings loaded (legacy
+		// data.json state, or empty) and migrate it into the vault when
+		// there is something to preserve.
+		if (hadLegacy) {
+			await this.saveShoppingState();
+			await this.saveSettings();
+		}
+	}
+
+	/** Write the in-memory shopping list state to its vault JSON file. */
+	async saveShoppingState(): Promise<void> {
+		const path = resolveShoppingStatePath(this.settings.shoppingStatePath);
+		this.settings.shoppingStatePath = path;
+		const content = serializeShoppingState(this.settings.state);
+		this.shoppingStateWriteToken = content;
+		await writeShoppingStateFile(this.app, path, this.settings.state);
+	}
+
+	/** Persist settings and shopping state together (used by the manager sink). */
+	async persistAll(): Promise<void> {
+		await this.saveShoppingState();
+		await this.saveSettings();
+	}
+
+	private async onShoppingStateFileModified(file: TFile): Promise<void> {
+		const raw = await this.app.vault.cachedRead(file);
+		if (raw === this.shoppingStateWriteToken) return;
+		const parsed = parseShoppingState(raw);
+		if (!parsed) return;
+		this.settings.state = parsed;
+		await this.manager.refresh();
+	}
+
+	private isShoppingStateFile(file: TAbstractFile): boolean {
+		return this.isShoppingStatePath(file.path);
+	}
+
+	private isShoppingStatePath(path: string): boolean {
+		return (
+			path === resolveShoppingStatePath(this.settings.shoppingStatePath)
+		);
 	}
 
 	async activateView(): Promise<void> {
@@ -345,23 +467,25 @@ function makeSaveSink(plugin: PantryPlugin): SaveSink {
 		get settings() {
 			return plugin.settings;
 		},
-		save: () => plugin.saveSettings(),
+		save: () => plugin.persistAll(),
 	};
 }
 
-function mergeSettings(
-	raw: Partial<PantrySettings> | null,
-): PantrySettings {
+/** Settings blob written to data.json — shopping state stays in the vault. */
+function settingsForDisk(settings: PantrySettings): PantrySettings {
+	return {
+		...settings,
+		state: emptyShoppingState(),
+	};
+}
+
+function mergeSettings(raw: Partial<PantrySettings> | null): PantrySettings {
 	const base: PantrySettings = {
 		...DEFAULT_SETTINGS,
 		categoryOrder: [...DEFAULT_CATEGORY_ORDER],
 		categoryOverrides: [],
 		recipeFolders: [],
-		state: {
-			oneOffs: [],
-			checkedKeys: {},
-			collapsedGroups: {},
-		},
+		state: emptyShoppingState(),
 	};
 	if (!raw) return base;
 
@@ -494,7 +618,10 @@ function mergeSettings(
 				return base.autoFillStatusValues;
 			}
 			const vals = raw.autoFillStatusValues
-				.filter((n): n is number => typeof n === "number" && Number.isFinite(n))
+				.filter(
+					(n): n is number =>
+						typeof n === "number" && Number.isFinite(n),
+				)
 				.map((n) => Math.round(n));
 			return vals.length > 0 ? vals : base.autoFillStatusValues;
 		})(),
@@ -511,6 +638,11 @@ function mergeSettings(
 			typeof raw.importTemplatePath === "string"
 				? raw.importTemplatePath.trim()
 				: base.importTemplatePath,
+		shoppingStatePath:
+			typeof raw.shoppingStatePath === "string" &&
+			raw.shoppingStatePath.trim()
+				? raw.shoppingStatePath.trim()
+				: DEFAULT_SHOPPING_STATE_PATH,
 	};
 	return merged;
 }
