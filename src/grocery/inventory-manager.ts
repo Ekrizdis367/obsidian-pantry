@@ -1,7 +1,6 @@
 import { App, Events } from "obsidian";
 import { InventoryItem } from "../types";
 import { PantrySettings } from "../settings";
-import { groupForDisplay } from "./aggregator";
 
 export interface InventorySaveSink {
 	readonly settings: PantrySettings;
@@ -29,12 +28,57 @@ export class InventoryManager extends Events {
 	}
 
 	/**
-	 * Get items grouped by category for display.
+	 * Get items grouped by category or tag, per the saved grouping mode.
+	 * Untagged items fall into an "Untagged" group when grouping by tag; an
+	 * item with multiple tags appears in each of its tag groups.
 	 */
 	getGroupedItems(
 		settings: PantrySettings,
 	): Array<[string, InventoryItem[]]> {
-		return groupForDisplay(this.items as any, settings) as any;
+		const groupBy = settings.inventoryState.groupBy;
+		const sorted = [...this.items].sort((a, b) =>
+			a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+		);
+
+		const groups = new Map<string, InventoryItem[]>();
+		for (const item of sorted) {
+			const keys =
+				groupBy === "tag"
+					? item.tags.length > 0
+						? item.tags
+						: ["Untagged"]
+					: [item.category || "Other"];
+			for (const key of keys) {
+				const arr = groups.get(key);
+				if (arr) arr.push(item);
+				else groups.set(key, [item]);
+			}
+		}
+
+		if (groupBy === "tag") {
+			return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
+		}
+
+		const order = settings.categoryOrder.length ? settings.categoryOrder : [];
+		const orderedKeys = order.filter((key) => groups.has(key));
+		const remaining = [...groups.keys()]
+			.filter((k) => !orderedKeys.includes(k))
+			.sort();
+		return [...orderedKeys, ...remaining].map((k) => [k, groups.get(k) ?? []]);
+	}
+
+	/** Set how inventory items are grouped, then persist and re-render. */
+	async setGroupBy(groupBy: "category" | "tag"): Promise<void> {
+		this.sink.settings.inventoryState.groupBy = groupBy;
+		await this.sink.save();
+		this.trigger("changed");
+	}
+
+	/** Set the inventory view's row density (zoom), then persist and re-render. */
+	async setRowScale(scale: number): Promise<void> {
+		this.sink.settings.inventoryState.rowScale = scale;
+		await this.sink.save();
+		this.trigger("changed");
 	}
 
 	/**

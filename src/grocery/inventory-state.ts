@@ -3,7 +3,7 @@ import {
 	DEFAULT_INVENTORY_STATE_PATH,
 	PantrySavedInventoryState,
 } from "../settings";
-import { InventoryItem } from "../types";
+import { InventoryItem, ShopLink } from "../types";
 
 export { DEFAULT_INVENTORY_STATE_PATH };
 
@@ -13,6 +13,16 @@ interface InventoryStateFile {
 	version: number;
 	items: InventoryItem[];
 	collapsedGroups: Record<string, boolean>;
+	groupBy: "category" | "tag";
+	rowScale: number;
+}
+
+const MIN_ROW_SCALE = 0.8;
+const MAX_ROW_SCALE = 1.4;
+
+function clampRowScale(value: unknown): number {
+	const n = typeof value === "number" && Number.isFinite(value) ? value : 1;
+	return Math.min(MAX_ROW_SCALE, Math.max(MIN_ROW_SCALE, n));
 }
 
 /** Empty runtime state used when the vault file is missing or invalid. */
@@ -20,6 +30,8 @@ export function emptyInventoryState(): PantrySavedInventoryState {
 	return {
 		items: [],
 		collapsedGroups: {},
+		groupBy: "category",
+		rowScale: 1,
 	};
 }
 
@@ -50,6 +62,8 @@ export function mergeInventoryState(
 			...legacy.collapsedGroups,
 			...vault.collapsedGroups,
 		},
+		groupBy: vault.groupBy,
+		rowScale: vault.rowScale,
 	};
 }
 
@@ -59,6 +73,8 @@ export function serializeInventoryState(state: PantrySavedInventoryState): strin
 		version: STATE_VERSION,
 		items: state.items,
 		collapsedGroups: state.collapsedGroups,
+		groupBy: state.groupBy,
+		rowScale: state.rowScale,
 	};
 	return `${JSON.stringify(payload, null, "\t")}\n`;
 }
@@ -74,6 +90,8 @@ export function parseInventoryState(raw: string): PantrySavedInventoryState | nu
 		return {
 			items: normalizeInventoryItems(obj.items),
 			collapsedGroups: normalizeStringBoolMap(obj.collapsedGroups),
+			groupBy: obj.groupBy === "tag" ? "tag" : "category",
+			rowScale: clampRowScale(obj.rowScale),
 		};
 	} catch {
 		return null;
@@ -134,7 +152,7 @@ export function resolveInventoryStatePath(path: string): string {
 // Normalization helpers (internal)
 // ============================================================================
 
-function normalizeInventoryItems(raw: unknown): InventoryItem[] {
+export function normalizeInventoryItems(raw: unknown): InventoryItem[] {
 	if (!Array.isArray(raw)) return [];
 	return raw
 		.map((item) => {
@@ -161,11 +179,33 @@ function normalizeInventoryItems(raw: unknown): InventoryItem[] {
 						? obj.expirationDate
 						: null,
 				notes: typeof obj.notes === "string" ? obj.notes : null,
-				itemUrl:
-					typeof obj.itemUrl === "string" ? obj.itemUrl : null,
+				tags: normalizeTags(obj.tags),
+				shopLinks: normalizeShopLinks(obj.shopLinks),
 			};
 		})
 		.filter((item) => item !== null);
+}
+
+function normalizeTags(raw: unknown): string[] {
+	if (!Array.isArray(raw)) return [];
+	return raw.filter((t): t is string => typeof t === "string" && t.trim() !== "");
+}
+
+function normalizeShopLinks(raw: unknown): ShopLink[] {
+	if (!Array.isArray(raw)) return [];
+	return raw
+		.map((link) => {
+			if (typeof link !== "object" || !link) return null;
+			const obj = link as Record<string, unknown>;
+			const url = typeof obj.url === "string" ? obj.url.trim() : "";
+			if (!url) return null;
+			return {
+				nickname: typeof obj.nickname === "string" ? obj.nickname : "",
+				url,
+			};
+		})
+		.filter((link): link is ShopLink => link !== null)
+		.slice(0, 4);
 }
 
 function normalizeStringBoolMap(raw: unknown): Record<string, boolean> {

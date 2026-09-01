@@ -24,6 +24,7 @@ import {
 	DEFAULT_INVENTORY_STATE_PATH,
 	emptyInventoryState,
 	inventoryStateHasContent,
+	normalizeInventoryItems,
 	parseInventoryState,
 	readInventoryStateFile,
 	resolveInventoryStatePath,
@@ -37,7 +38,6 @@ import {
 	DEFAULT_SETTINGS,
 	normalizeMealPlanSlots,
 	PantrySettings,
-	ShoppingStore,
 } from "./settings";
 import { PantrySettingsTab } from "./ui/settings-tab";
 import { MealPlannerView, VIEW_TYPE_MEAL_PLANNER } from "./ui/planner-view";
@@ -811,27 +811,19 @@ function mergeSettings(raw: Partial<PantrySettings> | null): PantrySettings {
 				? raw.inventoryStatePath.trim()
 				: DEFAULT_INVENTORY_STATE_PATH,
 		inventoryState: {
-			items: Array.isArray(raw.inventoryState?.items)
-				? (raw.inventoryState?.items ?? [])
-				: [],
+			items: normalizeInventoryItems(raw.inventoryState?.items),
 			collapsedGroups:
 				raw.inventoryState?.collapsedGroups &&
 				typeof raw.inventoryState.collapsedGroups === "object"
 					? { ...raw.inventoryState.collapsedGroups }
 					: {},
+			groupBy: raw.inventoryState?.groupBy === "tag" ? "tag" : "category",
+			rowScale:
+				typeof raw.inventoryState?.rowScale === "number" &&
+				Number.isFinite(raw.inventoryState.rowScale)
+					? Math.min(1.4, Math.max(0.8, raw.inventoryState.rowScale))
+					: 1,
 		},
-		// Drop the old built-in "instacart" placeholder entry from earlier
-		// dev builds — the store list should only contain the user's own
-		// local retailers (Safeway, Sprouts, etc.).
-		shoppingStores: Array.isArray(raw.shoppingStores)
-			? raw.shoppingStores.filter(
-					(s): s is ShoppingStore =>
-						!!s &&
-						typeof s.id === "string" &&
-						typeof s.name === "string" &&
-						s.id.toLowerCase() !== "instacart",
-				)
-			: base.shoppingStores,
 	};
 	return merged;
 }

@@ -26,7 +26,7 @@ import {
 	getStatusIcon,
 	getStatusLabel,
 } from "../utils/inventory-status";
-import { buildCartUrl } from "../utils/cart-url";
+import { renderShopLinkButtons } from "./shop-link-buttons";
 import { AddOneOffModal } from "./add-item-modal";
 import { ConfirmModal } from "./confirm-modal";
 import { ExportListModal } from "./export-modal";
@@ -470,24 +470,9 @@ export class GroceryListView extends ItemView {
 		// Action buttons
 		const actions = li.createDiv({ cls: "pantry-item-actions" });
 
-		// Cart URL button (if inventory item has a product URL)
-		if (inventoryItem && inventoryItem.itemUrl) {
-			const cartBtn = actions.createEl("button", {
-				cls: "clickable-icon",
-				attr: { title: "Open on Instacart" },
-			});
-			setIcon(cartBtn, "shopping-cart");
-			cartBtn.addEventListener("click", () => {
-				if (inventoryItem.itemUrl) {
-					window.open(
-						buildCartUrl(
-							inventoryItem.itemUrl,
-							this.deps.getSettings().shoppingStores,
-						),
-						"_blank",
-					);
-				}
-			});
+		// Shop link buttons (if the matching inventory item has any configured)
+		if (inventoryItem && inventoryItem.shopLinks.length > 0) {
+			renderShopLinkButtons(actions, inventoryItem.shopLinks);
 		}
 
 		const matchingOneOff = oneOffs.find(

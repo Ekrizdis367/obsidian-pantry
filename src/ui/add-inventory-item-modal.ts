@@ -1,5 +1,7 @@
-import { App, Modal, Notice, Setting } from "obsidian";
-import { InventoryItem } from "../types";
+import { App, Modal, Notice, Setting, setIcon } from "obsidian";
+import { InventoryItem, ShopLink } from "../types";
+
+const MAX_SHOP_LINKS = 4;
 
 /**
  * Modal that adds or edits an inventory item's descriptive fields.
@@ -11,7 +13,9 @@ export class AddItemModal extends Modal {
 	private category: string;
 	private expirationDate: string;
 	private notes: string;
-	private itemUrl: string;
+	private tagsText: string;
+	private shopLinks: ShopLink[];
+	private shopLinksEl!: HTMLElement;
 	private readonly existing: InventoryItem | null;
 
 	constructor(
@@ -26,7 +30,8 @@ export class AddItemModal extends Modal {
 		this.category = existing?.category ?? "";
 		this.expirationDate = existing?.expirationDate ?? "";
 		this.notes = existing?.notes ?? "";
-		this.itemUrl = existing?.itemUrl ?? "";
+		this.tagsText = (existing?.tags ?? []).join(", ");
+		this.shopLinks = (existing?.shopLinks ?? []).map((l) => ({ ...l }));
 	}
 
 	onOpen(): void {
@@ -69,6 +74,18 @@ export class AddItemModal extends Modal {
 			);
 
 		new Setting(contentEl)
+			.setName("Tags")
+			.setDesc("Comma-separated. Used for grouping (e.g. baking, breakfast).")
+			.addText((text) =>
+				text
+					.setPlaceholder("e.g., baking, breakfast")
+					.setValue(this.tagsText)
+					.onChange((value) => {
+						this.tagsText = value;
+					}),
+			);
+
+		new Setting(contentEl)
 			.setName("Expiration date")
 			.setDesc("Optional.")
 			.addText((text) =>
@@ -93,16 +110,12 @@ export class AddItemModal extends Modal {
 			);
 
 		new Setting(contentEl)
-			.setName("Instacart product URL")
-			.setDesc("Optional. Link to the item's product page on Instacart. Your top-priority store (configured from the inventory header) overrides the link's retailer when you click the cart button.")
-			.addText((text) =>
-				text
-					.setPlaceholder("https://www.instacart.com/products/...")
-					.setValue(this.itemUrl)
-					.onChange((value) => {
-						this.itemUrl = value;
-					}),
-			);
+			.setName("Shop links")
+			.setDesc(`Up to ${MAX_SHOP_LINKS} direct links to this item at stores you shop at. Each opens exactly as entered.`)
+			.setHeading();
+
+		this.shopLinksEl = contentEl.createDiv({ cls: "pantry-shop-link-editor" });
+		this.renderShopLinks();
 
 		new Setting(contentEl)
 			.addButton((btn) =>
@@ -118,6 +131,54 @@ export class AddItemModal extends Modal {
 						void this.submit();
 					}),
 			);
+	}
+
+	private renderShopLinks(): void {
+		this.shopLinksEl.empty();
+
+		this.shopLinks.forEach((link, index) => {
+			const row = this.shopLinksEl.createDiv({ cls: "pantry-shop-link-row" });
+
+			const nicknameInput = row.createEl("input", {
+				cls: "pantry-shop-link-nickname",
+				type: "text",
+				attr: { placeholder: "Nickname (e.g. Safeway)" },
+			});
+			nicknameInput.value = link.nickname;
+			nicknameInput.addEventListener("input", () => {
+				link.nickname = nicknameInput.value;
+			});
+
+			const urlInput = row.createEl("input", {
+				cls: "pantry-shop-link-url",
+				type: "text",
+				attr: { placeholder: "https://..." },
+			});
+			urlInput.value = link.url;
+			urlInput.addEventListener("input", () => {
+				link.url = urlInput.value;
+			});
+
+			const removeBtn = row.createEl("button", {
+				cls: "clickable-icon pantry-remove",
+				attr: { title: "Remove shop link" },
+			});
+			setIcon(removeBtn, "trash-2");
+			removeBtn.addEventListener("click", () => {
+				this.shopLinks.splice(index, 1);
+				this.renderShopLinks();
+			});
+		});
+
+		if (this.shopLinks.length < MAX_SHOP_LINKS) {
+			const addBtn = this.shopLinksEl.createEl("button", {
+				text: "Add shop link",
+			});
+			addBtn.addEventListener("click", () => {
+				this.shopLinks.push({ nickname: "", url: "" });
+				this.renderShopLinks();
+			});
+		}
 	}
 
 	onClose(): void {
@@ -136,7 +197,13 @@ export class AddItemModal extends Modal {
 		const category = this.category.trim() || null;
 		const expirationDate = this.expirationDate.trim() || null;
 		const notes = this.notes.trim() || null;
-		const itemUrl = this.itemUrl.trim() || null;
+		const tags = this.tagsText
+			.split(",")
+			.map((t) => t.trim())
+			.filter(Boolean);
+		const shopLinks = this.shopLinks
+			.map((l) => ({ nickname: l.nickname.trim(), url: l.url.trim() }))
+			.filter((l) => l.url !== "");
 
 		const item: InventoryItem = {
 			id: this.existing?.id ?? generateItemId(),
@@ -148,7 +215,8 @@ export class AddItemModal extends Modal {
 			category,
 			expirationDate,
 			notes,
-			itemUrl,
+			tags,
+			shopLinks,
 			dateAdded: this.existing?.dateAdded ?? new Date().toISOString(),
 		};
 

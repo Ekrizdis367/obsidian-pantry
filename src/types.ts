@@ -32,6 +32,12 @@ export interface OneOffItem {
 	category: string | null;
 }
 
+/** A named shop link on an inventory item (e.g. "Safeway" → product URL). */
+export interface ShopLink {
+	nickname: string;
+	url: string;
+}
+
 /**
  * A single item in the user's pantry inventory.
  * Keyed uniquely by (name + unit).
@@ -51,8 +57,10 @@ export interface InventoryItem {
 	expirationDate: string | null;
 	/** Notes about the item (e.g., location in pantry). */
 	notes: string | null;
-	/** Instacart product URL for this item. */
-	itemUrl: string | null;
+	/** Free-form labels for grouping/filtering (e.g. "baking", "breakfast"). */
+	tags: string[];
+	/** Per-item shop links, capped at 4, each opened as-is (no URL rewriting). */
+	shopLinks: ShopLink[];
 }
 
 /**
