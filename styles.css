@@ -292,6 +292,10 @@
 	color: var(--color-green, #2ea043);
 }
 
+.pantry-status-neutral {
+	color: var(--text-faint);
+}
+
 .pantry-qty {
 	font-variant-numeric: tabular-nums;
 	color: var(--text-muted);

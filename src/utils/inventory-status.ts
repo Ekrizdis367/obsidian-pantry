@@ -2,7 +2,7 @@ import { InventoryItem } from "../types";
 
 /** Inventory item status for visual flagging. */
 export enum ItemStatus {
-	/** Item is out of stock (quantity 0 or null). */
+	/** Item is out of stock relative to a configured desired quantity. */
 	OUT_OF_STOCK = "out-of-stock",
 	/** Item has expired. */
 	EXPIRED = "expired",
@@ -10,6 +10,8 @@ export enum ItemStatus {
 	LOW = "low",
 	/** Item is expiring soon (within threshold days). */
 	EXPIRING_SOON = "expiring-soon",
+	/** No desired quantity is set, so stock level isn't being tracked. */
+	UNTRACKED = "untracked",
 	/** Item is in good condition. */
 	OK = "ok",
 }
@@ -18,30 +20,27 @@ export enum ItemStatus {
 export interface StatusConfig {
 	/** Days until expiration considered "soon" (default: 7). */
 	expiringThresholdDays: number;
-	/** Quantity below which is considered "low" (default: 5). */
-	lowStockThreshold: number;
 }
 
 const DEFAULT_CONFIG: StatusConfig = {
 	expiringThresholdDays: 7,
-	lowStockThreshold: 5,
 };
 
 /**
  * Determine the status of an inventory item.
- * Returns the highest-priority status (out of stock > expired > low > ok).
- * Low stock is defined as: current < (desired / 2)
+ * A desired quantity of 0/null means the item isn't being stock-tracked, so
+ * it's never flagged as out of stock or low — only expiration still applies.
  */
 export function getItemStatus(
 	item: InventoryItem,
 	config: StatusConfig = DEFAULT_CONFIG,
 ): ItemStatus {
-	// Check if out of stock (highest priority - red)
-	if (item.quantity === null || item.quantity === 0) {
+	const isTracked = item.desiredQuantity !== null && item.desiredQuantity > 0;
+
+	if (isTracked && (item.quantity === null || item.quantity === 0)) {
 		return ItemStatus.OUT_OF_STOCK;
 	}
 
-	// Check if expired (red)
 	if (item.expirationDate) {
 		const expDate = new Date(item.expirationDate);
 		const today = new Date();
@@ -50,7 +49,6 @@ export function getItemStatus(
 			return ItemStatus.EXPIRED;
 		}
 
-		// Check if expiring soon (yellow)
 		const expiringDate = new Date(today);
 		expiringDate.setDate(
 			expiringDate.getDate() + config.expiringThresholdDays,
@@ -60,15 +58,17 @@ export function getItemStatus(
 		}
 	}
 
-	// Check if low stock (yellow)
-	// Low = current quantity is less than half of desired quantity
-	if (item.desiredQuantity && item.desiredQuantity > 0) {
-		const lowThreshold = item.desiredQuantity / 2;
-		if (item.quantity < lowThreshold) {
+	if (isTracked) {
+		const lowThreshold = (item.desiredQuantity as number) / 2;
+		if ((item.quantity ?? 0) < lowThreshold) {
 			return ItemStatus.LOW;
 		}
+		return ItemStatus.OK;
 	}
 
+	if (item.quantity === null || item.quantity === 0) {
+		return ItemStatus.UNTRACKED;
+	}
 	return ItemStatus.OK;
 }
 
@@ -81,6 +81,8 @@ export function getStatusClass(status: ItemStatus): string {
 		case ItemStatus.LOW:
 		case ItemStatus.EXPIRING_SOON:
 			return "pantry-status-warning";
+		case ItemStatus.UNTRACKED:
+			return "pantry-status-neutral";
 		default:
 			return "pantry-status-ok";
 	}
@@ -97,6 +99,8 @@ export function getStatusLabel(status: ItemStatus): string {
 			return "Low stock";
 		case ItemStatus.EXPIRING_SOON:
 			return "Expiring soon";
+		case ItemStatus.UNTRACKED:
+			return "Not tracked";
 		default:
 			return "In stock";
 	}
@@ -113,6 +117,8 @@ export function getStatusIcon(status: ItemStatus): string {
 			return "alert-triangle";
 		case ItemStatus.EXPIRING_SOON:
 			return "clock-alert";
+		case ItemStatus.UNTRACKED:
+			return "circle-dashed";
 		default:
 			return "check-circle-2";
 	}

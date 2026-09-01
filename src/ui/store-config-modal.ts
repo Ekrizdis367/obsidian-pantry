@@ -27,7 +27,7 @@ export class StoreConfigModal extends Modal {
 		contentEl.createEl("h2", { text: "Configure stores" });
 		contentEl.createEl("p", {
 			cls: "setting-item-description",
-			text: "Add the stores you shop at and drag priority order with the up/down buttons. The top store is tried first when adding an item to cart.",
+			text: "Add the local retailers you shop at on Instacart (e.g., Safeway, Sprouts) and set their priority with the up/down buttons. The top store's retailer slug is used when opening an item's cart link. Leave this list empty to open item links as-is, with no retailer specified.",
 		});
 
 		this.listEl = contentEl.createDiv({ cls: "pantry-store-list" });
@@ -46,8 +46,8 @@ export class StoreConfigModal extends Modal {
 			);
 
 		new Setting(contentEl)
-			.setName("Store ID")
-			.setDesc("The retailer identifier Instacart uses for this store.")
+			.setName("Retailer slug")
+			.setDesc("The retailerSlug value Instacart uses in product URLs for this store (visible in the address bar, e.g. ...?retailerSlug=safeway).")
 			.addText((text) =>
 				text
 					.setPlaceholder("e.g., safeway")

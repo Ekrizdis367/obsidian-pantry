@@ -94,10 +94,10 @@ export class AddItemModal extends Modal {
 
 		new Setting(contentEl)
 			.setName("Instacart product URL")
-			.setDesc("Optional. Link to the item's product page on Instacart.")
+			.setDesc("Optional. Link to the item's product page on Instacart. Your top-priority store (configured from the inventory header) overrides the link's retailer when you click the cart button.")
 			.addText((text) =>
 				text
-					.setPlaceholder("https://www.instacart.com/store/products/...")
+					.setPlaceholder("https://www.instacart.com/products/...")
 					.setValue(this.itemUrl)
 					.onChange((value) => {
 						this.itemUrl = value;

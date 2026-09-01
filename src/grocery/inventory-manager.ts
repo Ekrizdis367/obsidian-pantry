@@ -42,6 +42,7 @@ export class InventoryManager extends Events {
 	 */
 	async addItem(item: InventoryItem): Promise<void> {
 		this.items.push(item);
+		this.sink.settings.inventoryState.items = this.items;
 		await this.sink.save();
 		this.trigger("changed");
 	}
@@ -53,6 +54,7 @@ export class InventoryManager extends Events {
 		const item = this.items.find((i) => i.id === id);
 		if (!item) return;
 		Object.assign(item, updates);
+		this.sink.settings.inventoryState.items = this.items;
 		await this.sink.save();
 		this.trigger("changed");
 	}
@@ -62,6 +64,7 @@ export class InventoryManager extends Events {
 	 */
 	async removeItem(id: string): Promise<void> {
 		this.items = this.items.filter((i) => i.id !== id);
+		this.sink.settings.inventoryState.items = this.items;
 		await this.sink.save();
 		this.trigger("changed");
 	}
