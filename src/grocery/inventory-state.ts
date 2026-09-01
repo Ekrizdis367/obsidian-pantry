@@ -147,6 +147,8 @@ function normalizeInventoryItems(raw: unknown): InventoryItem[] {
 				name: typeof obj.name === "string" ? obj.name : "",
 				quantity:
 					typeof obj.quantity === "number" ? obj.quantity : null,
+				desiredQuantity:
+					typeof obj.desiredQuantity === "number" ? obj.desiredQuantity : null,
 				unit: typeof obj.unit === "string" ? obj.unit : "",
 				category:
 					typeof obj.category === "string" ? obj.category : null,
@@ -159,6 +161,8 @@ function normalizeInventoryItems(raw: unknown): InventoryItem[] {
 						? obj.expirationDate
 						: null,
 				notes: typeof obj.notes === "string" ? obj.notes : null,
+				itemUrl:
+					typeof obj.itemUrl === "string" ? obj.itemUrl : null,
 			};
 		})
 		.filter((item) => item !== null);

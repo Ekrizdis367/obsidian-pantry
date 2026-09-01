@@ -10,6 +10,7 @@ import {
 } from "obsidian";
 import { groupForDisplay } from "../grocery/aggregator";
 import { GroceryListManager } from "../grocery/manager";
+import { InventoryManager } from "../grocery/inventory-manager";
 import { formatQuantity } from "../parser/quantity";
 import { readRecipeMultiplier } from "../parser/recipe";
 import {
@@ -17,8 +18,15 @@ import {
 	readAllergens,
 } from "../parser/recipe-meta";
 import { PantrySettings } from "../settings";
-import { GroceryItem, OneOffItem } from "../types";
+import { GroceryItem, OneOffItem, InventoryItem } from "../types";
 import { toTitleCase } from "../utils/text";
+import {
+	getItemStatus,
+	getStatusClass,
+	getStatusIcon,
+	getStatusLabel,
+} from "../utils/inventory-status";
+import { buildCartUrl } from "../utils/cart-url";
 import { AddOneOffModal } from "./add-item-modal";
 import { ConfirmModal } from "./confirm-modal";
 import { ExportListModal } from "./export-modal";
@@ -28,6 +36,7 @@ export const VIEW_TYPE_GROCERY_LIST = "pantry-grocery-list";
 
 interface ViewDeps {
 	manager: GroceryListManager;
+	inventoryManager: InventoryManager;
 	getSettings: () => PantrySettings;
 	saveSettings: () => Promise<void>;
 }
@@ -376,6 +385,18 @@ export class GroceryListView extends ItemView {
 		}
 	}
 
+	/** Find matching inventory item for a grocery item by name and unit. */
+	private findMatchingInventory(item: GroceryItem): InventoryItem | null {
+		const inventoryItems = this.deps.inventoryManager.getItems();
+		return (
+			inventoryItems.find(
+				(inv) =>
+					normaliseEqual(inv.name, item.name) &&
+					(inv.unit || "") === (item.unit || ""),
+			) || null
+		);
+	}
+
 	private renderItem(
 		parent: HTMLElement,
 		item: GroceryItem,
@@ -396,10 +417,25 @@ export class GroceryListView extends ItemView {
 		const body = li.createDiv({ cls: "pantry-item-body" });
 
 		const main = body.createDiv({ cls: "pantry-item-main" });
+
+		// Inventory status indicator (if inventory item exists)
+		const inventoryItem = this.findMatchingInventory(item);
+		if (inventoryItem) {
+			const status = getItemStatus(inventoryItem);
+			const statusIcon = main.createSpan({
+				cls: "pantry-item-status",
+			});
+			statusIcon.addClass(getStatusClass(status));
+			setIcon(statusIcon, getStatusIcon(status));
+			statusIcon.setAttribute("title", getStatusLabel(status));
+		}
+
 		main.createSpan({
 			cls: "pantry-name",
 			text: toTitleCase(item.name),
 		});
+
+		// Show needed quantity
 		const qtyAndUnit = [formatQuantity(item.quantity), item.unit]
 			.filter(Boolean)
 			.join(" ");
@@ -410,12 +446,47 @@ export class GroceryListView extends ItemView {
 			});
 		}
 
+		// Show what the user has (if inventory item exists)
+		if (inventoryItem && inventoryItem.quantity !== null) {
+			const onHandText =
+				formatQuantity(inventoryItem.quantity) +
+				(inventoryItem.unit ? " " + inventoryItem.unit : "");
+			main.createSpan({
+				cls: "pantry-on-hand",
+				text: ` · Have: ${onHandText}`,
+				attr: { title: "Quantity in your inventory" },
+			});
+		}
+
 		const meta = body.createDiv({ cls: "pantry-meta" });
 		const sourceLabels = item.sources.map((s) => s.label).join(" | ");
 		if (sourceLabels) {
 			meta.createSpan({
 				cls: "pantry-source",
 				text: sourceLabels,
+			});
+		}
+
+		// Action buttons
+		const actions = li.createDiv({ cls: "pantry-item-actions" });
+
+		// Cart URL button (if inventory item has a product URL)
+		if (inventoryItem && inventoryItem.itemUrl) {
+			const cartBtn = actions.createEl("button", {
+				cls: "clickable-icon",
+				attr: { title: "Open on Instacart" },
+			});
+			setIcon(cartBtn, "shopping-cart");
+			cartBtn.addEventListener("click", () => {
+				if (inventoryItem.itemUrl) {
+					window.open(
+						buildCartUrl(
+							inventoryItem.itemUrl,
+							this.deps.getSettings().shoppingStores,
+						),
+						"_blank",
+					);
+				}
 			});
 		}
 

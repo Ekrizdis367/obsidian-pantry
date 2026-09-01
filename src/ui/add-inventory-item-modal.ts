@@ -2,15 +2,16 @@ import { App, Modal, Notice, Setting } from "obsidian";
 import { InventoryItem } from "../types";
 
 /**
- * Modal that adds or edits an inventory item.
+ * Modal that adds or edits an inventory item's descriptive fields.
+ * Quantity and desired quantity are edited directly on the item card.
  */
 export class AddItemModal extends Modal {
 	private name: string;
-	private quantityText: string;
 	private unit: string;
 	private category: string;
 	private expirationDate: string;
 	private notes: string;
+	private itemUrl: string;
 	private readonly existing: InventoryItem | null;
 
 	constructor(
@@ -21,14 +22,11 @@ export class AddItemModal extends Modal {
 		super(app);
 		this.existing = existing ?? null;
 		this.name = existing?.name ?? "";
-		this.quantityText =
-			existing?.quantity !== null && existing?.quantity !== undefined
-				? String(existing.quantity)
-				: "";
 		this.unit = existing?.unit ?? "";
 		this.category = existing?.category ?? "";
 		this.expirationDate = existing?.expirationDate ?? "";
 		this.notes = existing?.notes ?? "";
+		this.itemUrl = existing?.itemUrl ?? "";
 	}
 
 	onOpen(): void {
@@ -46,15 +44,6 @@ export class AddItemModal extends Modal {
 				.setValue(this.name)
 				.onChange((value) => {
 					this.name = value;
-				}),
-		);
-
-		new Setting(contentEl).setName("Quantity").addText((text) =>
-			text
-				.setPlaceholder("Number (optional)")
-				.setValue(this.quantityText)
-				.onChange((value) => {
-					this.quantityText = value;
 				}),
 		);
 
@@ -104,6 +93,18 @@ export class AddItemModal extends Modal {
 			);
 
 		new Setting(contentEl)
+			.setName("Instacart product URL")
+			.setDesc("Optional. Link to the item's product page on Instacart.")
+			.addText((text) =>
+				text
+					.setPlaceholder("https://www.instacart.com/store/products/...")
+					.setValue(this.itemUrl)
+					.onChange((value) => {
+						this.itemUrl = value;
+					}),
+			);
+
+		new Setting(contentEl)
 			.addButton((btn) =>
 				btn
 					.setButtonText("Cancel")
@@ -131,20 +132,23 @@ export class AddItemModal extends Modal {
 			return;
 		}
 
-		const quantity = parseQuantityField(this.quantityText);
 		const unit = this.unit.trim();
 		const category = this.category.trim() || null;
 		const expirationDate = this.expirationDate.trim() || null;
 		const notes = this.notes.trim() || null;
+		const itemUrl = this.itemUrl.trim() || null;
 
 		const item: InventoryItem = {
 			id: this.existing?.id ?? generateItemId(),
 			name,
-			quantity,
+			// Quantity fields are edited directly on the item card, not here.
+			quantity: this.existing?.quantity ?? 0,
+			desiredQuantity: this.existing?.desiredQuantity ?? 0,
 			unit,
 			category,
 			expirationDate,
 			notes,
+			itemUrl,
 			dateAdded: this.existing?.dateAdded ?? new Date().toISOString(),
 		};
 
@@ -155,12 +159,6 @@ export class AddItemModal extends Modal {
 			new Notice(`Error saving item: ${String(e)}`);
 		}
 	}
-}
-
-function parseQuantityField(text: string): number | null {
-	if (!text) return null;
-	const parsed = parseFloat(text);
-	return !isNaN(parsed) ? parsed : null;
 }
 
 function generateItemId(): string {

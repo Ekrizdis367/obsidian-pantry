@@ -13,6 +13,16 @@ export const DEFAULT_SHOPPING_STATE_PATH = "Pantry/shopping-state.json";
 /** Default vault-relative path for cross-device inventory state. */
 export const DEFAULT_INVENTORY_STATE_PATH = "Pantry/inventory-state.json";
 
+/**
+ * A local store the user shops at (e.g., Safeway, Sprouts). Array order in
+ * {@link PantrySettings.shoppingStores} determines priority — index 0 is
+ * tried first when adding an item to cart.
+ */
+export interface ShoppingStore {
+	id: string;
+	name: string;
+}
+
 export interface PantrySettings {
 	/** Folder paths (vault-relative) to scan for recipes. Empty array = entire vault. */
 	recipeFolders: string[];
@@ -98,6 +108,11 @@ export interface PantrySettings {
 	 * in the vault — not to plugin data.json.
 	 */
 	inventoryState: PantrySavedInventoryState;
+	/**
+	 * User's local stores, ordered by shopping priority (index 0 = first
+	 * choice). Used to pick which store's cart to target when adding items.
+	 */
+	shoppingStores: ShoppingStore[];
 }
 
 export type NutritionDisplay = "per-serving" | "total";
@@ -273,6 +288,7 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 		items: [],
 		collapsedGroups: {},
 	},
+	shoppingStores: [],
 };
 
 /**

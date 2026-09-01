@@ -39,7 +39,10 @@ export interface OneOffItem {
 export interface InventoryItem {
 	id: string;
 	name: string;
+	/** Current quantity in inventory. */
 	quantity: number | null;
+	/** Desired/target quantity to maintain. */
+	desiredQuantity: number | null;
 	unit: string;
 	category: string | null;
 	/** When the item was added to inventory (ISO timestamp). */
@@ -48,6 +51,8 @@ export interface InventoryItem {
 	expirationDate: string | null;
 	/** Notes about the item (e.g., location in pantry). */
 	notes: string | null;
+	/** Instacart product URL for this item. */
+	itemUrl: string | null;
 }
 
 /**

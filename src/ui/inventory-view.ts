@@ -7,12 +7,19 @@ import {
 	setIcon,
 } from "obsidian";
 import { InventoryManager } from "../grocery/inventory-manager";
-import { formatQuantity } from "../parser/quantity";
 import { PantrySettings } from "../settings";
 import { InventoryItem } from "../types";
 import { toTitleCase } from "../utils/text";
+import {
+	getItemStatus,
+	getStatusClass,
+	getStatusIcon,
+	getStatusLabel,
+} from "../utils/inventory-status";
+import { buildCartUrl } from "../utils/cart-url";
 import { AddItemModal } from "./add-inventory-item-modal";
 import { ConfirmModal } from "./confirm-modal";
+import { StoreConfigModal } from "./store-config-modal";
 
 export const VIEW_TYPE_INVENTORY = "pantry-inventory";
 
@@ -89,6 +96,11 @@ export class InventoryView extends ItemView {
 			.setButtonText("Add item")
 			.onClick(() => this.openAddItemModal());
 		addBtn.buttonEl.addClass("pantry-add");
+
+		const storesBtn = new ButtonComponent(actions)
+			.setIcon("store")
+			.setTooltip("Configure stores")
+			.onClick(() => this.openStoreConfigModal());
 
 		const clearBtn = new ButtonComponent(actions)
 			.setIcon("trash-2")
@@ -167,23 +179,46 @@ export class InventoryView extends ItemView {
 
 		const main = body.createDiv({ cls: "pantry-item-main" });
 
-		const nameSpan = main.createSpan({
+		// Status indicator (color-coded icon)
+		const status = getItemStatus(item);
+		const statusIcon = main.createSpan({ cls: "pantry-item-status" });
+		statusIcon.addClass(getStatusClass(status));
+		setIcon(statusIcon, getStatusIcon(status));
+		statusIcon.setAttribute("title", getStatusLabel(status));
+
+		main.createSpan({
 			cls: "pantry-name",
 			text: toTitleCase(item.name),
 		});
 
-		// Quantity
-		if (item.quantity !== null || item.unit) {
-			const qtyText =
-				item.quantity !== null
-					? formatQuantity(item.quantity) + (item.unit ? " " + item.unit : "")
-					: item.unit || "";
-			const qty = main.createSpan({
-				cls: "pantry-qty",
-				text: qtyText,
-			});
-			qty.style.marginLeft = "0.5em";
+		if (item.unit) {
+			main.createSpan({ cls: "pantry-unit", text: item.unit });
 		}
+
+		// Cart button — persistently visible, not hover-gated.
+		if (item.itemUrl) {
+			const cartBtn = main.createEl("button", {
+				cls: "clickable-icon pantry-cart-btn",
+				attr: { title: "Open on Instacart" },
+			});
+			setIcon(cartBtn, "shopping-cart");
+			cartBtn.addEventListener("click", () => {
+				if (item.itemUrl) {
+					window.open(
+						buildCartUrl(
+							item.itemUrl,
+							this.deps.getSettings().shoppingStores,
+						),
+						"_blank",
+					);
+				}
+			});
+		}
+
+		// Editable quantity steppers (current / desired) with +/- buttons.
+		const qtyRow = body.createDiv({ cls: "pantry-qty-row" });
+		this.renderQtyStepper(qtyRow, "Have", item, "quantity");
+		this.renderQtyStepper(qtyRow, "Want", item, "desiredQuantity");
 
 		// Meta info (date added, expiration)
 		if (item.expirationDate || item.notes) {
@@ -218,6 +253,52 @@ export class InventoryView extends ItemView {
 		removeBtn.addEventListener("click", () => this.removeItem(item.id));
 	}
 
+	/** Render a labeled +/- stepper bound to a numeric field on an item. */
+	private renderQtyStepper(
+		parent: HTMLElement,
+		label: string,
+		item: InventoryItem,
+		field: "quantity" | "desiredQuantity",
+	): void {
+		const group = parent.createDiv({ cls: "pantry-qty-stepper" });
+		group.createSpan({ cls: "pantry-qty-label", text: label });
+
+		const minusBtn = group.createEl("button", {
+			cls: "clickable-icon pantry-qty-btn",
+			attr: { title: `Decrease ${label.toLowerCase()}` },
+		});
+		setIcon(minusBtn, "minus");
+
+		const input = group.createEl("input", {
+			cls: "pantry-qty-input",
+			type: "number",
+			attr: { min: "0", step: "1" },
+		});
+		input.value = String(item[field] ?? 0);
+
+		const plusBtn = group.createEl("button", {
+			cls: "clickable-icon pantry-qty-btn",
+			attr: { title: `Increase ${label.toLowerCase()}` },
+		});
+		setIcon(plusBtn, "plus");
+
+		const commit = (value: number) => {
+			const clamped = Math.max(0, value);
+			void this.deps.manager.updateItem(item.id, { [field]: clamped });
+		};
+
+		minusBtn.addEventListener("click", () => {
+			commit((item[field] ?? 0) - 1);
+		});
+		plusBtn.addEventListener("click", () => {
+			commit((item[field] ?? 0) + 1);
+		});
+		input.addEventListener("change", () => {
+			const parsed = parseFloat(input.value);
+			commit(!isNaN(parsed) ? parsed : 0);
+		});
+	}
+
 	private toggleGroupCollapsed(category: string): void {
 		const isCollapsed =
 			this.deps.manager.isGroupCollapsed(category);
@@ -247,6 +328,18 @@ export class InventoryView extends ItemView {
 				}
 			},
 			item,
+		).open();
+	}
+
+	private openStoreConfigModal(): void {
+		new StoreConfigModal(
+			this.app,
+			this.deps.getSettings().shoppingStores,
+			async (stores) => {
+				this.deps.getSettings().shoppingStores = stores;
+				await this.deps.saveSettings();
+				this.renderList();
+			},
 		).open();
 	}
 

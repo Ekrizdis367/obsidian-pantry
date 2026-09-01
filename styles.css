@@ -263,13 +263,44 @@
 }
 
 .pantry-item-main {
-	display: block;
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--size-2-1);
 	word-break: break-word;
+}
+
+.pantry-item-status {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 1.2em;
+	height: 1.2em;
+	margin-right: 0.25em;
+}
+
+.pantry-status-danger {
+	color: var(--color-red, #e5484d);
+}
+
+.pantry-status-warning {
+	color: var(--color-yellow, #f3cc00);
+}
+
+.pantry-status-ok {
+	color: var(--color-green, #2ea043);
 }
 
 .pantry-qty {
 	font-variant-numeric: tabular-nums;
 	color: var(--text-muted);
+}
+
+.pantry-on-hand {
+	font-variant-numeric: tabular-nums;
+	color: var(--text-faint);
+	font-size: var(--font-ui-small);
 }
 
 .pantry-name {
@@ -1609,6 +1640,45 @@
 	gap: var(--size-4-2);
 }
 
+.pantry-cart-btn {
+	flex-shrink: 0;
+	color: var(--color-green, #2ea043);
+}
+
+.pantry-unit {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.pantry-qty-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-4-2);
+	margin-top: var(--size-2-2);
+}
+
+.pantry-qty-stepper {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-1);
+}
+
+.pantry-qty-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	margin-right: var(--size-2-1);
+}
+
+.pantry-qty-btn {
+	padding: 2px;
+}
+
+.pantry-qty-input {
+	width: 3.5em;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
 .pantry-item-actions {
 	display: flex;
 	gap: var(--size-2-1);
@@ -1626,6 +1696,37 @@
 	display: flex;
 	align-items: baseline;
 	gap: var(--size-4-2);
+}
+
+.pantry-store-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	margin-bottom: var(--size-4-2);
+}
+
+.pantry-store-row {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-2);
+	padding: var(--size-2-1) var(--size-2-2);
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+}
+
+.pantry-store-priority {
+	font-weight: var(--font-semibold);
+	color: var(--text-muted);
+	width: 1.5em;
+}
+
+.pantry-store-name {
+	flex-grow: 1;
+}
+
+.pantry-store-id {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
 }
 
 /*

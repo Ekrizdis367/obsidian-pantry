@@ -83,6 +83,7 @@ export default class PantryPlugin extends Plugin {
 			(leaf) =>
 				new GroceryListView(leaf, {
 					manager: this.manager,
+					inventoryManager: this.inventoryManager,
 					getSettings: () => this.settings,
 					saveSettings: () => this.saveSettings(),
 				}),
@@ -261,6 +262,8 @@ export default class PantryPlugin extends Plugin {
 	}
 
 	onunload(): void {
+		// Save inventory state before unloading
+		void this.persistAllInventory();
 		// Leaves are detached automatically by Obsidian on unload.
 		this.clearAutoOpenRecipeTimer();
 	}
