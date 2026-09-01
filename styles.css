@@ -1773,6 +1773,10 @@
 	font-size: var(--font-ui-small);
 }
 
+.pantry-hover-card.is-hidden {
+	display: none;
+}
+
 .pantry-hover-card-title {
 	font-weight: var(--font-semibold);
 	margin-bottom: var(--size-2-2);

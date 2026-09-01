@@ -42,6 +42,15 @@ export class InventoryView extends ItemView {
 	private hoverTimer: number | null = null;
 	private zoomLabelEl!: HTMLElement;
 
+	/** Delay (ms) before hover card appears on row mouseover. */
+	private static readonly HOVER_CARD_DELAY_MS = 1500;
+	/** Row density zoom step (±10%). */
+	private static readonly ROW_SCALE_STEP = 0.1;
+	/** Minimum row density scale. */
+	private static readonly ROW_SCALE_MIN = 0.8;
+	/** Maximum row density scale. */
+	private static readonly ROW_SCALE_MAX = 1.4;
+
 	constructor(
 		leaf: WorkspaceLeaf,
 		private readonly deps: ViewDeps,
@@ -70,7 +79,7 @@ export class InventoryView extends ItemView {
 		this.listEl = root.createDiv({ cls: "pantry-inventory-list" });
 
 		this.hoverCardEl = document.body.createDiv({ cls: "pantry-hover-card" });
-		this.hoverCardEl.style.display = "none";
+		this.hoverCardEl.addClass("is-hidden");
 
 		this.renderHeader();
 
@@ -98,7 +107,7 @@ export class InventoryView extends ItemView {
 			cls: "pantry-header-content",
 		});
 		titleWrap.createEl("h2", {
-			text: "Pantry Inventory",
+			text: "Pantry inventory",
 			cls: "pantry-title",
 		});
 
@@ -123,16 +132,12 @@ export class InventoryView extends ItemView {
 
 		const clearBtn = new ButtonComponent(actions)
 			.setIcon("trash-2")
-			.setTooltip("Clear all inventory")
+			.setTooltip("Clear inventory")
 			.onClick(() => this.openClearConfirm());
 		clearBtn.buttonEl.addClass("pantry-clear");
 	}
 
 	private renderZoomControls(parent: HTMLElement): void {
-		const ROW_SCALE_STEP = 0.1;
-		const ROW_SCALE_MIN = 0.8;
-		const ROW_SCALE_MAX = 1.4;
-
 		const group = parent.createDiv({ cls: "pantry-zoom-controls" });
 
 		const outBtn = group.createEl("button", {
@@ -143,7 +148,7 @@ export class InventoryView extends ItemView {
 		outBtn.addEventListener("click", () => {
 			const current = this.deps.getSettings().inventoryState.rowScale;
 			void this.deps.manager.setRowScale(
-				Math.max(ROW_SCALE_MIN, Math.round((current - ROW_SCALE_STEP) * 10) / 10),
+				Math.max(InventoryView.ROW_SCALE_MIN, Math.round((current - InventoryView.ROW_SCALE_STEP) * 10) / 10),
 			);
 		});
 
@@ -162,7 +167,7 @@ export class InventoryView extends ItemView {
 		inBtn.addEventListener("click", () => {
 			const current = this.deps.getSettings().inventoryState.rowScale;
 			void this.deps.manager.setRowScale(
-				Math.min(ROW_SCALE_MAX, Math.round((current + ROW_SCALE_STEP) * 10) / 10),
+				Math.min(InventoryView.ROW_SCALE_MAX, Math.round((current + InventoryView.ROW_SCALE_STEP) * 10) / 10),
 			);
 		});
 	}
@@ -369,8 +374,6 @@ export class InventoryView extends ItemView {
 		next?.focus();
 	}
 
-	private static readonly HOVER_CARD_DELAY_MS = 1500;
-
 	private scheduleHoverCard(row: HTMLElement, item: InventoryItem): void {
 		this.cancelHoverCard();
 		this.hoverTimer = window.setTimeout(() => {
@@ -383,13 +386,18 @@ export class InventoryView extends ItemView {
 			window.clearTimeout(this.hoverTimer);
 			this.hoverTimer = null;
 		}
-		this.hoverCardEl.style.display = "none";
+		this.hoverCardEl.addClass("is-hidden");
 	}
 
-	/** Quick-glance details on hover — shop links are deliberately omitted. */
+	/**
+	 * Quick-glance details on hover — shop links are deliberately omitted.
+	 * Card appears after HOVER_CARD_DELAY_MS, positioned below the row and nudged
+	 * on-screen via requestAnimationFrame after rendering to get accurate size.
+	 */
 	private showHoverCard(row: HTMLElement, item: InventoryItem): void {
 		const card = this.hoverCardEl;
 		card.empty();
+		card.removeClass("is-hidden");
 
 		card.createDiv({ cls: "pantry-hover-card-title", text: toTitleCase(item.name) });
 
@@ -413,11 +421,12 @@ export class InventoryView extends ItemView {
 		}
 
 		const rect = row.getBoundingClientRect();
-		card.style.display = "block";
 		card.style.left = `${rect.left}px`;
 		card.style.top = `${rect.bottom + 4}px`;
 
-		// Keep the card on-screen once its rendered size is known.
+		// Position check: shift card on-screen if it overflows after the browser
+		// renders its actual size. Use requestAnimationFrame to ensure layout is
+		// computed before repositioning.
 		requestAnimationFrame(() => {
 			const cardRect = card.getBoundingClientRect();
 			if (cardRect.right > window.innerWidth) {

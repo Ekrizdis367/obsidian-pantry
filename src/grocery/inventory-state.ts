@@ -1,4 +1,4 @@
-import { App, TFile, TFolder } from "obsidian";
+import { App, TFile } from "obsidian";
 import {
 	DEFAULT_INVENTORY_STATE_PATH,
 	PantrySavedInventoryState,

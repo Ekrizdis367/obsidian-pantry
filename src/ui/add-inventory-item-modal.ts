@@ -1,6 +1,7 @@
 import { App, Modal, Notice, Setting, setIcon } from "obsidian";
 import { InventoryItem, ShopLink } from "../types";
 
+/** Maximum number of shop links per inventory item. */
 const MAX_SHOP_LINKS = 4;
 
 /**
@@ -40,7 +41,7 @@ export class AddItemModal extends Modal {
 
 		const editing = this.existing !== null;
 		contentEl.createEl("h2", {
-			text: editing ? "Edit inventory item" : "Add inventory item",
+			text: editing ? "Edit Inventory Item" : "Add Inventory Item",
 		});
 
 		new Setting(contentEl).setName("Name").addText((text) =>
@@ -54,7 +55,7 @@ export class AddItemModal extends Modal {
 
 		new Setting(contentEl).setName("Unit").addText((text) =>
 			text
-				.setPlaceholder("e.g., cups, lbs, oz (optional)")
+				.setPlaceholder("E.g., cups, lbs, oz (optional)")
 				.setValue(this.unit)
 				.onChange((value) => {
 					this.unit = value;
@@ -63,10 +64,10 @@ export class AddItemModal extends Modal {
 
 		new Setting(contentEl)
 			.setName("Category")
-			.setDesc("Optional. Leave blank for uncategorized.")
+			.setDesc("Optional category for organizing your inventory.")
 			.addText((text) =>
 				text
-					.setPlaceholder("e.g., Pantry, Freezer, Fridge")
+					.setPlaceholder("Pantry, freezer, or fridge")
 					.setValue(this.category)
 					.onChange((value) => {
 						this.category = value;
@@ -75,10 +76,10 @@ export class AddItemModal extends Modal {
 
 		new Setting(contentEl)
 			.setName("Tags")
-			.setDesc("Comma-separated. Used for grouping (e.g. baking, breakfast).")
+			.setDesc("Labels for filtering and organizing items.")
 			.addText((text) =>
 				text
-					.setPlaceholder("e.g., baking, breakfast")
+					.setPlaceholder("E.g., baking, breakfast")
 					.setValue(this.tagsText)
 					.onChange((value) => {
 						this.tagsText = value;
@@ -87,10 +88,10 @@ export class AddItemModal extends Modal {
 
 		new Setting(contentEl)
 			.setName("Expiration date")
-			.setDesc("Optional.")
+			.setDesc("Date the item expires (optional).")
 			.addText((text) =>
 				text
-					.setPlaceholder("YYYY-MM-DD")
+					.setPlaceholder("2024-12-31")
 					.setValue(this.expirationDate)
 					.onChange((value) => {
 						this.expirationDate = value;
@@ -102,7 +103,7 @@ export class AddItemModal extends Modal {
 			.setDesc("Optional notes about this item.")
 			.addTextArea((text) =>
 				text
-					.setPlaceholder("e.g., location, opened date, etc.")
+					.setPlaceholder("E.g., location, opened date, etc.")
 					.setValue(this.notes)
 					.onChange((value) => {
 						this.notes = value;
@@ -142,7 +143,7 @@ export class AddItemModal extends Modal {
 			const nicknameInput = row.createEl("input", {
 				cls: "pantry-shop-link-nickname",
 				type: "text",
-				attr: { placeholder: "Nickname (e.g. Safeway)" },
+				attr: { placeholder: "Store name" },
 			});
 			nicknameInput.value = link.nickname;
 			nicknameInput.addEventListener("input", () => {
@@ -152,7 +153,7 @@ export class AddItemModal extends Modal {
 			const urlInput = row.createEl("input", {
 				cls: "pantry-shop-link-url",
 				type: "text",
-				attr: { placeholder: "https://..." },
+				attr: { placeholder: "https://store.com/product" },
 			});
 			urlInput.value = link.url;
 			urlInput.addEventListener("input", () => {
