@@ -33,6 +33,24 @@ export interface OneOffItem {
 }
 
 /**
+ * A single item in the user's pantry inventory.
+ * Keyed uniquely by (name + unit).
+ */
+export interface InventoryItem {
+	id: string;
+	name: string;
+	quantity: number | null;
+	unit: string;
+	category: string | null;
+	/** When the item was added to inventory (ISO timestamp). */
+	dateAdded: string;
+	/** User-supplied expiration date or notes. */
+	expirationDate: string | null;
+	/** Notes about the item (e.g., location in pantry). */
+	notes: string | null;
+}
+
+/**
  * A single line in the grocery list, after consolidation.
  * Keyed uniquely by (name + unit).
  */

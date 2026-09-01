@@ -1599,6 +1599,35 @@
 	padding: var(--size-2-2) var(--size-2-3);
 }
 
+/* ============================================================
+   Inventory view
+   ============================================================ */
+
+.pantry-inventory-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+}
+
+.pantry-item-actions {
+	display: flex;
+	gap: var(--size-2-1);
+	opacity: 0;
+	transition: opacity 120ms ease-in-out;
+	flex-shrink: 0;
+}
+
+.pantry-item:hover .pantry-item-actions,
+.pantry-item:focus-within .pantry-item-actions {
+	opacity: 1;
+}
+
+.pantry-header-content {
+	display: flex;
+	align-items: baseline;
+	gap: var(--size-4-2);
+}
+
 /*
  * Phone portrait and other narrow panes: drop the recipe body to a
  * single column (handled at 700px below too) and trim chrome so the

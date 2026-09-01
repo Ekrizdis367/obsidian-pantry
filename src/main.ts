@@ -19,6 +19,17 @@ import {
 	shoppingStateHasContent,
 	writeShoppingStateFile,
 } from "./grocery/shopping-state";
+import { InventoryManager, InventorySaveSink } from "./grocery/inventory-manager";
+import {
+	DEFAULT_INVENTORY_STATE_PATH,
+	emptyInventoryState,
+	inventoryStateHasContent,
+	parseInventoryState,
+	readInventoryStateFile,
+	resolveInventoryStatePath,
+	serializeInventoryState,
+	writeInventoryStateFile,
+} from "./grocery/inventory-state";
 import { recipeTypeMatches } from "./parser/recipe";
 import {
 	DEFAULT_CATEGORY_ORDER,
@@ -31,6 +42,7 @@ import { PantrySettingsTab } from "./ui/settings-tab";
 import { MealPlannerView, VIEW_TYPE_MEAL_PLANNER } from "./ui/planner-view";
 import { RecipeView, VIEW_TYPE_RECIPE } from "./ui/recipe-view";
 import { GroceryListView, VIEW_TYPE_GROCERY_LIST } from "./ui/view";
+import { InventoryView, VIEW_TYPE_INVENTORY } from "./ui/inventory-view";
 
 /** Re-assert cadence for the recipe-view swap, and how many times to try. */
 const AUTO_OPEN_RETRY_MS = 30;
@@ -39,6 +51,7 @@ const AUTO_OPEN_MAX_ATTEMPTS = 6;
 export default class PantryPlugin extends Plugin {
 	settings!: PantrySettings;
 	manager!: GroceryListManager;
+	inventoryManager!: InventoryManager;
 	/** Vault path awaiting a metadata-cache retry for recipe auto-open. */
 	private autoOpenRecipePendingPath: string | null = null;
 	/** Pending deferred recipe-view swap, so it can be cancelled/superseded. */
@@ -48,13 +61,22 @@ export default class PantryPlugin extends Plugin {
 	 * vault modify events so a self-write does not trigger a redundant reload.
 	 */
 	private shoppingStateWriteToken: string | null = null;
+	/**
+	 * Last content we wrote to the inventory-state file. Used to ignore our own
+	 * vault modify events so a self-write does not trigger a redundant reload.
+	 */
+	private inventoryStateWriteToken: string | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
 		await this.loadShoppingState();
+		await this.loadInventoryState();
 
 		const sink: SaveSink = makeSaveSink(this);
 		this.manager = new GroceryListManager(this.app, sink);
+
+		const inventorySink: InventorySaveSink = makeInventorySaveSink(this);
+		this.inventoryManager = new InventoryManager(this.app, inventorySink);
 
 		this.registerView(
 			VIEW_TYPE_GROCERY_LIST,
@@ -88,12 +110,26 @@ export default class PantryPlugin extends Plugin {
 				}),
 		);
 
+		this.registerView(
+			VIEW_TYPE_INVENTORY,
+			(leaf) =>
+				new InventoryView(leaf, {
+					manager: this.inventoryManager,
+					getSettings: () => this.settings,
+					saveSettings: () => this.saveSettings(),
+				}),
+		);
+
 		this.addRibbonIcon("shopping-cart", "Open grocery list", () => {
 			void this.activateView();
 		});
 
 		this.addRibbonIcon("calendar-days", "Open meal planner", () => {
 			void this.activatePlannerView();
+		});
+
+		this.addRibbonIcon("archive", "Open pantry inventory", () => {
+			void this.activateInventoryView();
 		});
 
 		registerCommands({
@@ -164,6 +200,11 @@ export default class PantryPlugin extends Plugin {
 					void this.manager.refresh();
 					return;
 				}
+				if (this.isInventoryStateFile(file)) {
+					this.settings.inventoryState = emptyInventoryState();
+					void this.inventoryManager.refresh();
+					return;
+				}
 				refresh();
 			}),
 		);
@@ -176,26 +217,46 @@ export default class PantryPlugin extends Plugin {
 					}
 					return;
 				}
+				if (this.isInventoryStatePath(oldPath)) {
+					if (file instanceof TFile) {
+						this.settings.inventoryStatePath = file.path;
+						void this.saveSettings();
+					}
+					return;
+				}
 				refresh();
 			}),
 		);
 		this.registerEvent(
 			this.app.vault.on("modify", (file) => {
 				if (!(file instanceof TFile)) return;
-				if (!this.isShoppingStateFile(file)) return;
-				void this.onShoppingStateFileModified(file);
+				if (this.isShoppingStateFile(file)) {
+					void this.onShoppingStateFileModified(file);
+					return;
+				}
+				if (this.isInventoryStateFile(file)) {
+					void this.onInventoryStateFileModified(file);
+					return;
+				}
 			}),
 		);
 		this.registerEvent(
 			this.app.vault.on("create", (file) => {
 				if (!(file instanceof TFile)) return;
-				if (!this.isShoppingStateFile(file)) return;
-				void this.onShoppingStateFileModified(file);
+				if (this.isShoppingStateFile(file)) {
+					void this.onShoppingStateFileModified(file);
+					return;
+				}
+				if (this.isInventoryStateFile(file)) {
+					void this.onInventoryStateFileModified(file);
+					return;
+				}
 			}),
 		);
 
 		this.app.workspace.onLayoutReady(() => {
 			void this.manager.refresh();
+			void this.inventoryManager.refresh();
 		});
 	}
 
@@ -288,6 +349,74 @@ export default class PantryPlugin extends Plugin {
 		);
 	}
 
+	/**
+	 * Load inventory items from the vault JSON file.
+	 * Similar to loadShoppingState, handles migration and merging.
+	 */
+	async loadInventoryState(): Promise<void> {
+		const path = resolveInventoryStatePath(
+			this.settings.inventoryStatePath,
+		);
+		this.settings.inventoryStatePath = path;
+		const legacy = this.settings.inventoryState;
+		const hadLegacy = inventoryStateHasContent(legacy);
+		const fromVault = await readInventoryStateFile(this.app, path);
+		if (fromVault) {
+			this.settings.inventoryState = fromVault;
+			// Drop any legacy copy still sitting in data.json.
+			await this.saveSettings();
+			return;
+		}
+
+		// No vault file yet — keep whatever mergeSettings loaded (legacy
+		// data.json state, or empty) and migrate it into the vault when
+		// there is something to preserve.
+		if (hadLegacy) {
+			await this.saveInventoryState();
+			await this.saveSettings();
+		}
+	}
+
+	/** Write the in-memory inventory state to its vault JSON file. */
+	async saveInventoryState(): Promise<void> {
+		const path = resolveInventoryStatePath(
+			this.settings.inventoryStatePath,
+		);
+		this.settings.inventoryStatePath = path;
+		const content = serializeInventoryState(this.settings.inventoryState);
+		this.inventoryStateWriteToken = content;
+		await writeInventoryStateFile(
+			this.app,
+			path,
+			this.settings.inventoryState,
+		);
+	}
+
+	/** Persist settings and inventory state together (used by the manager sink). */
+	async persistAllInventory(): Promise<void> {
+		await this.saveInventoryState();
+		await this.saveSettings();
+	}
+
+	private async onInventoryStateFileModified(file: TFile): Promise<void> {
+		const raw = await this.app.vault.cachedRead(file);
+		if (raw === this.inventoryStateWriteToken) return;
+		const parsed = parseInventoryState(raw);
+		if (!parsed) return;
+		this.settings.inventoryState = parsed;
+		await this.inventoryManager.refresh();
+	}
+
+	private isInventoryStateFile(file: TAbstractFile): boolean {
+		return this.isInventoryStatePath(file.path);
+	}
+
+	private isInventoryStatePath(path: string): boolean {
+		return (
+			path === resolveInventoryStatePath(this.settings.inventoryStatePath)
+		);
+	}
+
 	async activateView(): Promise<void> {
 		const { workspace } = this.app;
 		let leaf: WorkspaceLeaf | null = null;
@@ -320,6 +449,24 @@ export default class PantryPlugin extends Plugin {
 			leaf = workspace.getLeaf("tab");
 			await leaf.setViewState({
 				type: VIEW_TYPE_MEAL_PLANNER,
+				active: true,
+			});
+		}
+		if (leaf) {
+			await workspace.revealLeaf(leaf);
+		}
+	}
+
+	async activateInventoryView(): Promise<void> {
+		const { workspace } = this.app;
+		let leaf: WorkspaceLeaf | null = null;
+		const existing = workspace.getLeavesOfType(VIEW_TYPE_INVENTORY);
+		if (existing.length > 0) {
+			leaf = existing[0] ?? null;
+		} else {
+			leaf = workspace.getLeaf("tab");
+			await leaf.setViewState({
+				type: VIEW_TYPE_INVENTORY,
 				active: true,
 			});
 		}
@@ -471,11 +618,21 @@ function makeSaveSink(plugin: PantryPlugin): SaveSink {
 	};
 }
 
+function makeInventorySaveSink(plugin: PantryPlugin): InventorySaveSink {
+	return {
+		get settings() {
+			return plugin.settings;
+		},
+		save: () => plugin.persistAllInventory(),
+	};
+}
+
 /** Settings blob written to data.json — shopping state stays in the vault. */
 function settingsForDisk(settings: PantrySettings): PantrySettings {
 	return {
 		...settings,
 		state: emptyShoppingState(),
+		inventoryState: emptyInventoryState(),
 	};
 }
 
@@ -486,6 +643,7 @@ function mergeSettings(raw: Partial<PantrySettings> | null): PantrySettings {
 		categoryOverrides: [],
 		recipeFolders: [],
 		state: emptyShoppingState(),
+		inventoryState: emptyInventoryState(),
 	};
 	if (!raw) return base;
 
@@ -643,6 +801,21 @@ function mergeSettings(raw: Partial<PantrySettings> | null): PantrySettings {
 			raw.shoppingStatePath.trim()
 				? raw.shoppingStatePath.trim()
 				: DEFAULT_SHOPPING_STATE_PATH,
+		inventoryStatePath:
+			typeof raw.inventoryStatePath === "string" &&
+			raw.inventoryStatePath.trim()
+				? raw.inventoryStatePath.trim()
+				: DEFAULT_INVENTORY_STATE_PATH,
+		inventoryState: {
+			items: Array.isArray(raw.inventoryState?.items)
+				? (raw.inventoryState?.items ?? [])
+				: [],
+			collapsedGroups:
+				raw.inventoryState?.collapsedGroups &&
+				typeof raw.inventoryState.collapsedGroups === "object"
+					? { ...raw.inventoryState.collapsedGroups }
+					: {},
+		},
 	};
 	return merged;
 }

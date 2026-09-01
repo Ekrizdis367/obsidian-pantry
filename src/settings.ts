@@ -3,11 +3,15 @@ import {
 	CategoryOverride,
 	CategorySource,
 	GroupingMode,
+	InventoryItem,
 	OneOffItem,
 } from "./types";
 
 /** Default vault-relative path for cross-device shopping list state. */
 export const DEFAULT_SHOPPING_STATE_PATH = "Pantry/shopping-state.json";
+
+/** Default vault-relative path for cross-device inventory state. */
+export const DEFAULT_INVENTORY_STATE_PATH = "Pantry/inventory-state.json";
 
 export interface PantrySettings {
 	/** Folder paths (vault-relative) to scan for recipes. Empty array = entire vault. */
@@ -83,6 +87,17 @@ export interface PantrySettings {
 	 * in the vault — not to plugin data.json.
 	 */
 	state: PantrySavedState;
+	/**
+	 * Vault-relative JSON file for pantry inventory items.
+	 * Lives in the vault so Obsidian Sync / folder sync keeps inventory
+	 * in sync across devices.
+	 */
+	inventoryStatePath: string;
+	/**
+	 * In-memory inventory runtime state. Persisted to {@link inventoryStatePath}
+	 * in the vault — not to plugin data.json.
+	 */
+	inventoryState: PantrySavedInventoryState;
 }
 
 export type NutritionDisplay = "per-serving" | "total";
@@ -97,6 +112,16 @@ export interface PantrySavedState {
 	checkedKeys: Record<string, boolean>;
 	/**
 	 * Map from grouping section name to whether the user has it collapsed.
+	 * Missing entries default to expanded.
+	 */
+	collapsedGroups: Record<string, boolean>;
+}
+
+export interface PantrySavedInventoryState {
+	/** Items in the user's pantry inventory. */
+	items: InventoryItem[];
+	/**
+	 * Map from category name to whether the user has it collapsed.
 	 * Missing entries default to expanded.
 	 */
 	collapsedGroups: Record<string, boolean>;
@@ -241,6 +266,11 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 	state: {
 		oneOffs: [],
 		checkedKeys: {},
+		collapsedGroups: {},
+	},
+	inventoryStatePath: DEFAULT_INVENTORY_STATE_PATH,
+	inventoryState: {
+		items: [],
 		collapsedGroups: {},
 	},
 };
