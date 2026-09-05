@@ -44,6 +44,8 @@ const BUILTIN_CATEGORIES: Record<string, string[]> = {
 	Dairy: [
 		"milk", "cream", "half and half", "half-and-half", "butter", "yogurt", "yoghurt",
 		"sour cream", "creme fraiche", "ghee",
+		// Compound butters beat Produce "garlic".
+		"garlic butter", "herb butter", "garlic herb butter",
 	],
 	Cheese: [
 		"cheese", "cheddar", "mozzarella", "parmesan", "feta", "ricotta", "cottage cheese",
@@ -58,27 +60,38 @@ const BUILTIN_CATEGORIES: Record<string, string[]> = {
 	Canned: [
 		"canned", "tomato sauce", "tomato paste", "diced tomato", "crushed tomato",
 		"lentil", "bean", "chickpea", "garbanzo", "black bean", "kidney bean",
+		// Compound forms must outrank Produce keywords (e.g. "tomato" in "tomato soup").
+		"tomato soup", "mushroom soup", "onion soup", "soup mix",
 	],
-	Broth: ["broth", "stock", "bouillon", "stock cube"],
+	Broth: ["broth", "stock", "bouillon", "stock cube", "stock concentrate"],
 	Sauce: [
 		"salsa", "soy sauce", "fish sauce", "hot sauce", "sriracha",
+		// Generic / compound sauces — longer than Produce hits like garlic/chili/tomato.
+		"sauce", "alfredo", "marinara", "pesto", "hoisin", "ponzu", "bulgogi",
+		"worcestershire", "bbq sauce", "barbecue sauce", "buffalo sauce",
+		"enchilada sauce", "chili sauce", "garlic sauce", "herb sauce", "teriyaki", "gravy",
+		"salad dressing", "dressing",
 	],
 	Condiment: [
 		"ketchup", "mustard", "mayonnaise", "mayo", "jam", "jelly", "preserve",
-		"peanut butter", "almond butter",
+		"peanut butter", "almond butter", "applesauce", "apple sauce",
 	],
 	Oil: [
 		"oil", "olive oil", "vegetable oil", "canola oil", "coconut oil", "sesame oil",
-		"vinegar",
+		"avocado oil", "vinegar",
 	],
 	Seasoning: [
 		"salt", "pepper", "spice", "cinnamon", "cumin", "paprika", "turmeric", "curry",
-		"chili powder", "red pepper flake", "bay leaf", "nutmeg", "cardamom",
+		"chili powder", "chili flakes", "chile flakes", "red pepper flake",
+		"bay leaf", "nutmeg", "cardamom",
+		// Dried alliums / powders beat raw Produce keyword matches.
+		"garlic powder", "onion powder", "ginger powder", "powdered ginger",
+		"garlic salt", "onion salt", "celery salt", "pie spice",
 	],
 	Baking: [
 		"flour", "all-purpose flour", "bread flour", "sugar", "brown sugar",
 		"powdered sugar", "baking powder", "baking soda", "yeast", "vanilla", "cocoa",
-		"chocolate", "honey", "maple syrup", "syrup", "cake",
+		"chocolate", "honey", "maple syrup", "syrup", "cake", "cornstarch", "corn starch",
 	],
 	Pantry: [
 		"almond", "walnut", "pecan", "cashew", "pistachio", "peanut", "sunflower seed",
@@ -91,7 +104,7 @@ const BUILTIN_CATEGORIES: Record<string, string[]> = {
 	],
 	Beverage: [
 		"water", "sparkling water", "soda", "cola", "coffee", "tea", "juice",
-		"orange juice", "apple juice", "lemonade", "kombucha",
+		"orange juice", "apple juice", "lemon juice", "lime juice", "lemonade", "kombucha",
 	],
 	Alcohol: ["wine", "beer", "champagne", "sake"],
 	Household: [

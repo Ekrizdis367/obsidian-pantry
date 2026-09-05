@@ -26,6 +26,7 @@ export interface CommandsHost {
 	saveSettings(): Promise<void>;
 	openView(): Promise<void>;
 	openMealPlanner(): Promise<void>;
+	openInventory(): Promise<void>;
 	openCurrentAsRecipe(): Promise<void>;
 	openCurrentAsMarkdown(): Promise<void>;
 }
@@ -38,6 +39,14 @@ export function registerCommands(host: CommandsHost): void {
 		name: "Open grocery list",
 		callback: () => {
 			void host.openView();
+		},
+	});
+
+	plugin.addCommand({
+		id: "open-inventory",
+		name: "Open inventory",
+		callback: () => {
+			void host.openInventory();
 		},
 	});
 

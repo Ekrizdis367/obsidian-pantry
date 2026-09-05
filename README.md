@@ -18,6 +18,7 @@ Recipe view with hero image, scaled ingredients, instructions, and portion multi
 - **Automatic consolidation.** Ingredients shared across recipes are merged. `1 cup milk` + `2 cups milk` becomes `3 cup milk`.
 - **Smart grouping.** Items are grouped by category (Produce, Dairy & Eggs, Pantry, ...) so the list matches the layout of your store. Switch to by-recipe or a flat list at any time.
 - **One-off items.** Add anything that isn't tied to a recipe (paper towels, snacks). One-offs live alongside recipe items and clear with the rest of the list. They are stored in a vault JSON file (`Pantry/shopping-state.json` by default) so they sync across devices with your notes — unlike plugin settings, which are device-local.
+- **Inventory.** Track what you already have (spices, staples, leftovers) in a dedicated inventory view. Toggle **In** when you have an item; matching grocery lines are omitted automatically (name-only match). Uncheck when you run out so the next recipe pulls it back onto the list. Complements `#IgnoreIngredient` for permanent per-recipe skips.
 - **Persistent checkboxes.** Tick items off as you shop. Your progress survives restarts and syncs across devices until you officially clear the list.
 - **Collapsible sections.** Click any section header to collapse or expand it. Sections you finish shopping auto-collapse so the next aisle stays in view (toggleable in settings).
 - **Custom recipe view.** Notes flagged with a configurable type property (`type: recipe` by default, and wikilink values like `[[Recipes]]` are recognised) open in a dedicated view with a hero image, nutrition card, an instructions panel, meat-temperature warnings, and a portion multiplier that scales both the displayed quantities *and* the grocery list.
@@ -71,7 +72,10 @@ Lines without a recognisable quantity (`salt to taste`) still appear on the list
 
 ### Skipping ingredients
 
-Append `#IgnoreIngredient` to any ingredient line you don't want on the shopping list (pantry staples you always have on hand, garnishes, water, etc.):
+Two complementary options:
+
+1. **`#IgnoreIngredient`** on a recipe line — permanent skip for that recipe (oil, salt, water, garnishes).
+2. **Inventory in-stock list** — add staples once under **Open inventory**, leave **In** checked, and matching grocery lines are omitted while **Exclude in-stock from grocery list** is on (default). Uncheck **In** when you run out.
 
 ```markdown
 - 2 tbsp olive oil #IgnoreIngredient
@@ -83,7 +87,7 @@ The tag is matched case-insensitively; `#ignoreingredient`, `#ignore-ingredient`
 
 ## Recipe view
 
-Pantry ships a custom view for recipe notes. To opt a note in, add `type: recipe` to its frontmatter. Both the property name and the value it's matched against are configurable in **Settings → Recipe view** (set **Recipe type property** to `category`, `kind`, etc. if you don't use `type`). Matching is case-insensitive, and wikilink values such as `type: [[Recipes]]` are matched against the linked note's name — so the property picker's linked values work too. When auto-open is on (the default), opening such a note switches the leaf into the recipe view automatically. If frontmatter is not ready the instant the file opens, Pantry retries once Obsidian finishes parsing YAML. After that, Pantry briefly re-asserts the recipe view so Obsidian's own Markdown leaf update cannot overwrite it on warm opens. You can always switch back with the **Edit as Markdown** button in the view's action bar, the **Recipe mode** entry in the pane's three-dot menu, or the **Open as Markdown** command.
+Pantry ships a custom view for recipe notes. To opt a note in, add `type: recipe` to its frontmatter. Both the property name and the value it's matched against are configurable in **Settings → Recipe view** (set **Recipe type property** to `category`, `kind`, etc. if you don't use `type`). Matching is case-insensitive, and wikilink values such as `type: [[Recipes]]` are matched against the linked note's name — so the property picker's linked values work too. When auto-open is on (the default), opening such a note switches the leaf into the recipe view automatically. If frontmatter is not ready the instant the file opens, Pantry retries once Obsidian finishes parsing YAML. After that, Pantry briefly re-asserts the recipe view so Obsidian's own Markdown leaf update cannot overwrite it on warm opens. If you switch to Markdown (**Edit as Markdown** / **Open as Markdown**), that choice is remembered for the rest of the session — switching away and back keeps editing mode until you pick **Recipe mode** or **Open as recipe** again. Prefer the old “always recipe” behaviour? Turn on **Settings → Recipe view → Always force recipe view**. You can always switch with the **Edit as Markdown** button in the view's action bar, the **Recipe mode** entry in the pane's three-dot menu, or the **Open as Markdown** / **Open as recipe** commands.
 
 The view shows a meta banner with the multiplier, servings, and nutrition; a hero image card; a tabular ingredients list with safe-cooking-temperature badges next to detected meats; and a numbered instructions card. Trailing parentheticals on ingredient lines (e.g. `(softened)`) appear in italic after the ingredient name. The meta banner also includes a favorite star, **kids approved** thumbs-up / thumbs-down controls, and the add-to-grocery-list toggle.
 
@@ -97,8 +101,9 @@ Frontmatter properties the view reads and writes:
 | `category` | string | Free-form recipe type/cuisine (e.g. `bbq`, `soup`, `pasta`, `mexican`, `rice`). Not used by the view directly, but handy for building [Bases](https://help.obsidian.md/bases) views that filter or group recipes by what they are. Included in the import template. |
 | `image` | string | Hero image for the recipe. Accepts a wikilink (`[[my-photo.jpg]]`), a vault-relative path, or an external URL. The key is matched case-insensitively (`Image`, `IMAGE`). |
 | `multiplier` | number | Portion multiplier (default `1`, minimum `0.5`). Scales the displayed ingredient quantities, the grocery list contribution, and the displayed servings count. **Does not** change per-serving nutrition. |
-| `servings` | number | Optional. Used to compute per-serving nutrition. |
-| `calories`, `protein`, `fat`, `carbs` | number | Totals for the recipe **as written** (multiplier `1`). Per-serving values are computed by dividing by `servings`. |
+| `servings` | number | Optional. Used to compute per-serving nutrition when values are recipe totals. |
+| `calories`, `protein`, `fat`, `carbs`, `fiber` | number | Nutrition for the recipe **as written** (multiplier `1`). Accepts `fibre` as an alias for fiber. By default these are **recipe totals**; per-serving display divides by `servings`. |
+| `perServing` / `per-serving` | boolean | When `true`, the nutrition numbers above are already **per serving** (shared with Coach). Pantry shows them as-is in per-serving mode and multiplies by `servings` for totals; Coach skips dividing when logging one serving. |
 | `diet` | array of strings | Diet tags shown as badges (e.g. `["vegan", "gluten-free"]`). Free-form. |
 | `allergens` | array of strings | Allergens this recipe contains (e.g. `["nuts", "dairy"]`). Compared case-insensitively against your allergen list in settings. |
 | `prepTime`, `cookTime`, `totalTime` | number | Minutes. `totalTime` is computed from `prepTime + cookTime` when not provided. |
@@ -173,6 +178,7 @@ Copy individual notes (or the whole thing) into one of your configured **Recipe 
 | Command | Description |
 | --- | --- |
 | Open grocery list | Reveal the grocery list in the right sidebar. |
+| Open inventory | Reveal the pantry inventory view. |
 | Refresh grocery list from recipes | Re-scan selected recipes. Runs automatically on file changes. |
 | Add one-off grocery item | Open the modal to add a one-off. |
 | Reset grocery list checks | Uncheck everything without removing items. |

@@ -34,6 +34,13 @@ export interface PantrySettings {
 	autoCollapseCompleted: boolean;
 	/** Auto-open notes whose recipe-type frontmatter matches `recipeTypeValue` in the recipe view. */
 	autoOpenRecipeView: boolean;
+	/**
+	 * When true with auto-open, always reopen matching notes in recipe view —
+	 * even if the user previously switched that note to Markdown this session.
+	 * When false (default), Markdown preference is remembered until Recipe mode
+	 * is chosen again.
+	 */
+	forceRecipeViewOnOpen: boolean;
 	/** Frontmatter property name read to identify a recipe note (default: "type"). */
 	recipeTypeProperty: string;
 	/** The frontmatter value (under `recipeTypeProperty`) that marks a recipe (default: "recipe"). */
@@ -93,6 +100,12 @@ export interface PantrySettings {
 	 * in sync across devices.
 	 */
 	inventoryStatePath: string;
+	/**
+	 * When true, grocery list lines whose name matches an in-stock inventory
+	 * item are omitted (name-only match, units ignored). Empty inventory or
+	 * items marked out of stock still appear on the list.
+	 */
+	excludeInStockFromGrocery: boolean;
 	/**
 	 * In-memory inventory runtime state. Persisted to {@link inventoryStatePath}
 	 * in the vault — not to plugin data.json.
@@ -245,6 +258,7 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 	categoryOverrides: [],
 	autoCollapseCompleted: true,
 	autoOpenRecipeView: true,
+	forceRecipeViewOnOpen: false,
 	recipeTypeProperty: "type",
 	recipeTypeValue: "recipe",
 	suppressInlineRecipeImage: false,
@@ -273,6 +287,7 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 		collapsedGroups: {},
 	},
 	inventoryStatePath: DEFAULT_INVENTORY_STATE_PATH,
+	excludeInStockFromGrocery: true,
 	inventoryState: {
 		items: [],
 		collapsedGroups: {},
@@ -294,6 +309,12 @@ export const RECIPE_FRONTMATTER = {
 	protein: "protein",
 	fat: "fat",
 	carbs: "carbs",
+	fiber: "fiber",
+	/**
+	 * When true, calories/macros in frontmatter are already per serving
+	 * (shared with Coach). Absent/false = recipe totals (default).
+	 */
+	perServing: "perServing",
 	diet: "diet",
 	allergens: "allergens",
 	prepTime: "prepTime",

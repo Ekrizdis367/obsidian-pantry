@@ -96,6 +96,7 @@ function readNutrition(value: unknown): {
 	protein: number | null;
 	fat: number | null;
 	carbs: number | null;
+	fiber: number | null;
 } {
 	const obj =
 		value && typeof value === "object"
@@ -109,6 +110,9 @@ function readNutrition(value: unknown): {
 		fat: parseNutrientNumber(obj["fatContent"] ?? obj["fat"]),
 		carbs: parseNutrientNumber(
 			obj["carbohydrateContent"] ?? obj["carbohydrates"],
+		),
+		fiber: parseNutrientNumber(
+			obj["fiberContent"] ?? obj["fibreContent"] ?? obj["fiber"] ?? obj["fibre"],
 		),
 	};
 }

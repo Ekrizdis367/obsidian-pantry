@@ -29,6 +29,10 @@ import {
 	PantrySettings,
 	RECIPE_FRONTMATTER,
 } from "../settings";
+import {
+	isNutritionPerServing,
+	resolveNutritionDisplayValue,
+} from "../utils/nutrition-basis";
 
 export const VIEW_TYPE_RECIPE = "pantry-recipe";
 
@@ -60,6 +64,11 @@ const NUTRITION_FIELDS: NutritionField[] = [
 		key: "carbs",
 		label: "Carbs",
 		aliases: ["carb", "carbohydrate", "carbohydrates", "net carbs"],
+	},
+	{
+		key: "fiber",
+		label: "Fiber",
+		aliases: ["fibre", "dietary fiber", "dietary fibre", "dietaryfiber"],
 	},
 ];
 
@@ -806,14 +815,16 @@ export class RecipeView extends TextFileView {
 		displayMode: PantrySettings["nutritionDisplay"],
 	): void {
 		const baseValue = readNutritionValue(frontmatter, field);
-		const perServing =
-			baseValue !== null && baseServings !== null && baseServings > 0
-				? baseValue / baseServings
-				: null;
+		const sourceIsPerServing = isNutritionPerServing(frontmatter);
 		const displayValue =
-			displayMode === "per-serving" && perServing !== null
-				? perServing
-				: baseValue;
+			baseValue === null
+				? null
+				: resolveNutritionDisplayValue(
+						baseValue,
+						baseServings,
+						sourceIsPerServing,
+						displayMode,
+					);
 
 		const cell = container.createDiv({
 			cls: "pantry-recipe-meta-cell",

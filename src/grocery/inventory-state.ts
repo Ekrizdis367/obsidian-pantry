@@ -100,7 +100,8 @@ export function parseInventoryState(raw: string): PantrySavedInventoryState | nu
 
 /**
  * Read inventory state from the vault. Returns null when the file does not
- * exist yet (caller may migrate from legacy plugin data).
+ * exist yet (caller may migrate from legacy plugin data). Returns empty
+ * state (and logs) when the file exists but cannot be parsed.
  */
 export async function readInventoryStateFile(
 	app: App,
@@ -111,6 +112,10 @@ export async function readInventoryStateFile(
 	if (!(file instanceof TFile)) return null;
 	const raw = await app.vault.cachedRead(file);
 	const parsed = parseInventoryState(raw);
+	if (!parsed) {
+		console.error(`pantry: failed to parse inventory state at ${resolved}`);
+		return emptyInventoryState();
+	}
 	return parsed;
 }
 
@@ -141,11 +146,12 @@ export async function writeInventoryStateFile(
 }
 
 /**
- * Normalize the vault path to be absolute (strip any leading "./").
- * Obsidian's vault API is inconsistent about these.
+ * Normalize the vault path. Blank settings fall back to the default path
+ * (same behaviour as shopping-state resolution).
  */
 export function resolveInventoryStatePath(path: string): string {
-	return path.replace(/^\.\//, "");
+	const trimmed = path.trim().replace(/^\/+/, "").replace(/^\.\//, "");
+	return trimmed || DEFAULT_INVENTORY_STATE_PATH;
 }
 
 // ============================================================================
@@ -163,10 +169,8 @@ export function normalizeInventoryItems(raw: unknown): InventoryItem[] {
 			return {
 				id,
 				name: typeof obj.name === "string" ? obj.name : "",
-				quantity:
-					typeof obj.quantity === "number" ? obj.quantity : null,
-				desiredQuantity:
-					typeof obj.desiredQuantity === "number" ? obj.desiredQuantity : null,
+				// Missing field → in stock (legacy files / earlier payloads).
+				inStock: obj.inStock === false ? false : true,
 				unit: typeof obj.unit === "string" ? obj.unit : "",
 				category:
 					typeof obj.category === "string" ? obj.category : null,

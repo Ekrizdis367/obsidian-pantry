@@ -18,19 +18,24 @@ import {
 import {
 	DEFAULT_AUTO_FILL_STATUS_VALUES,
 	DEFAULT_CATEGORY_ORDER,
+	DEFAULT_INVENTORY_STATE_PATH,
 	DEFAULT_SHOPPING_STATE_PATH,
 	MEAL_PLAN_SLOTS,
 	normalizeMealPlanSlots,
 	PantrySettings,
 } from "../settings";
 import { RECIPE_TEMPLATE_TOKEN_HINT } from "../importer/default-template";
+import { InventoryManager } from "../grocery/inventory-manager";
 
 export interface SettingsHost {
 	settings: PantrySettings;
 	saveSettings(): Promise<void>;
 	manager: GroceryListManager;
+	inventoryManager: InventoryManager;
 	/** Reload shopping list state from the vault (after the path setting changes). */
 	reloadShoppingState(): Promise<void>;
+	/** Reload inventory state from the vault (after the path setting changes). */
+	reloadInventoryState(): Promise<void>;
 }
 
 /**
@@ -87,6 +92,18 @@ export class PantrySettingsTab extends PluginSettingTab {
 						render: (setting) =>
 							this.wireShoppingStatePath(setting),
 					},
+					{
+						name: "Inventory state file",
+						desc: "Vault-relative JSON file for pantry inventory items. Stored in the vault so it syncs across devices.",
+						render: (setting) =>
+							this.wireInventoryStatePath(setting),
+					},
+					{
+						name: "Exclude in-stock from grocery list",
+						desc: "Omit grocery lines that match an inventory item marked in stock (name-only match). Uncheck an inventory item when you run out so it comes back onto the list. Complements #IgnoreIngredient for permanent per-recipe skips.",
+						render: (setting) =>
+							this.wireExcludeInStockFromGrocery(setting),
+					},
 				],
 			},
 			{
@@ -97,6 +114,12 @@ export class PantrySettingsTab extends PluginSettingTab {
 						name: "Auto-open recipe view",
 						desc: "Open notes whose recipe type matches the property and value below in the recipe view automatically.",
 						render: (setting) => this.wireAutoOpenRecipeView(setting),
+					},
+					{
+						name: "Always force recipe view",
+						desc: "When auto-open is on, always reopen matching notes in recipe view — even after you switched that note to Markdown. Off by default so Edit as Markdown sticks when you switch away and back.",
+						render: (setting) =>
+							this.wireForceRecipeViewOnOpen(setting),
 					},
 					{
 						name: "Recipe type property",
@@ -116,7 +139,7 @@ export class PantrySettingsTab extends PluginSettingTab {
 					},
 					{
 						name: "Nutrition display",
-						desc: "Show nutrition values per serving (when the recipe declares servings) or as recipe totals.",
+						desc: "Show nutrition values per serving or as recipe totals. By default frontmatter values are recipe totals (divide by servings). Set `perServing: true` on a recipe when values are already per serving — shared with Coach.",
 						render: (setting) => this.wireNutritionDisplay(setting),
 					},
 					{
@@ -368,12 +391,52 @@ export class PantrySettingsTab extends PluginSettingTab {
 		);
 	}
 
+	private wireInventoryStatePath(setting: Setting): void {
+		setting.addText((text) =>
+			text
+				.setPlaceholder(DEFAULT_INVENTORY_STATE_PATH)
+				.setValue(this.host.settings.inventoryStatePath)
+				.onChange(async (value) => {
+					const next = value.trim() || DEFAULT_INVENTORY_STATE_PATH;
+					if (next === this.host.settings.inventoryStatePath) return;
+					this.host.settings.inventoryStatePath = next;
+					await this.host.saveSettings();
+					await this.host.reloadInventoryState();
+					await this.host.inventoryManager.refresh();
+					this.host.manager.reapplyInventoryFilter();
+				}),
+		);
+	}
+
+	private wireExcludeInStockFromGrocery(setting: Setting): void {
+		setting.addToggle((toggle) =>
+			toggle
+				.setValue(this.host.settings.excludeInStockFromGrocery)
+				.onChange(async (value) => {
+					this.host.settings.excludeInStockFromGrocery = value;
+					await this.host.saveSettings();
+					this.host.manager.reapplyInventoryFilter();
+				}),
+		);
+	}
+
 	private wireAutoOpenRecipeView(setting: Setting): void {
 		setting.addToggle((toggle) =>
 			toggle
 				.setValue(this.host.settings.autoOpenRecipeView)
 				.onChange(async (value) => {
 					this.host.settings.autoOpenRecipeView = value;
+					await this.host.saveSettings();
+				}),
+		);
+	}
+
+	private wireForceRecipeViewOnOpen(setting: Setting): void {
+		setting.addToggle((toggle) =>
+			toggle
+				.setValue(this.host.settings.forceRecipeViewOnOpen)
+				.onChange(async (value) => {
+					this.host.settings.forceRecipeViewOnOpen = value;
 					await this.host.saveSettings();
 				}),
 		);

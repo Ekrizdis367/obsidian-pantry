@@ -16,4 +16,5 @@ export interface ImportedRecipe {
 	protein: number | null;
 	fat: number | null;
 	carbs: number | null;
+	fiber: number | null;
 }

@@ -21,6 +21,7 @@ calories: {{calories}}
 protein: {{protein}}
 fat: {{fat}}
 carbs: {{carbs}}
+fiber: {{fiber}}
 diet: []
 allergens: []
 prepTime: {{prepTime}}
@@ -55,6 +56,7 @@ export const RECIPE_TEMPLATE_TOKEN_HINT = [
 	"protein",
 	"fat",
 	"carbs",
+	"fiber",
 	"prepTime",
 	"cookTime",
 	"totalTime",

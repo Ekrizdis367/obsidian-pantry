@@ -40,15 +40,17 @@ export interface ShopLink {
 
 /**
  * A single item in the user's pantry inventory.
- * Keyed uniquely by (name + unit).
+ * Matched to grocery lines by normalised name when {@link inStock} is true.
  */
 export interface InventoryItem {
 	id: string;
 	name: string;
-	/** Current quantity in inventory. */
-	quantity: number | null;
-	/** Desired/target quantity to maintain. */
-	desiredQuantity: number | null;
+	/**
+	 * When true (default), matching grocery lines are omitted when
+	 * "Exclude in-stock from grocery list" is enabled. Uncheck when you've
+	 * run out so the next recipe pulls it back onto the list.
+	 */
+	inStock: boolean;
 	unit: string;
 	category: string | null;
 	/** When the item was added to inventory (ISO timestamp). */
@@ -112,4 +114,5 @@ export interface RecipeNutrition {
 	protein: number | null;
 	fat: number | null;
 	carbs: number | null;
+	fiber: number | null;
 }

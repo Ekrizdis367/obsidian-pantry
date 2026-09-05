@@ -385,14 +385,12 @@ export class GroceryListView extends ItemView {
 		}
 	}
 
-	/** Find matching inventory item for a grocery item by name and unit. */
+	/** Find matching inventory item for a grocery item by normalised name. */
 	private findMatchingInventory(item: GroceryItem): InventoryItem | null {
 		const inventoryItems = this.deps.inventoryManager.getItems();
 		return (
-			inventoryItems.find(
-				(inv) =>
-					normaliseEqual(inv.name, item.name) &&
-					(inv.unit || "") === (item.unit || ""),
+			inventoryItems.find((inv) =>
+				normaliseEqual(inv.name, item.name),
 			) || null
 		);
 	}
@@ -443,18 +441,6 @@ export class GroceryListView extends ItemView {
 			main.createSpan({
 				cls: "pantry-qty",
 				text: ` (${qtyAndUnit})`,
-			});
-		}
-
-		// Show what the user has (if inventory item exists)
-		if (inventoryItem && inventoryItem.quantity !== null) {
-			const onHandText =
-				formatQuantity(inventoryItem.quantity) +
-				(inventoryItem.unit ? " " + inventoryItem.unit : "");
-			main.createSpan({
-				cls: "pantry-on-hand",
-				text: ` · Have: ${onHandText}`,
-				attr: { title: "Quantity in your inventory" },
 			});
 		}
 

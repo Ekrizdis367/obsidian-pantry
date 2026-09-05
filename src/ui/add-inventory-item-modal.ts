@@ -6,7 +6,7 @@ const MAX_SHOP_LINKS = 4;
 
 /**
  * Modal that adds or edits an inventory item's descriptive fields.
- * Quantity and desired quantity are edited directly on the item card.
+ * Stock status (In) is toggled directly on the item card.
  */
 export class AddItemModal extends Modal {
 	private name: string;
@@ -153,7 +153,7 @@ export class AddItemModal extends Modal {
 			const urlInput = row.createEl("input", {
 				cls: "pantry-shop-link-url",
 				type: "text",
-				attr: { placeholder: "https://store.com/product" },
+				attr: { placeholder: "Product page URL" },
 			});
 			urlInput.value = link.url;
 			urlInput.addEventListener("input", () => {
@@ -209,9 +209,8 @@ export class AddItemModal extends Modal {
 		const item: InventoryItem = {
 			id: this.existing?.id ?? generateItemId(),
 			name,
-			// Quantity fields are edited directly on the item card, not here.
-			quantity: this.existing?.quantity ?? 0,
-			desiredQuantity: this.existing?.desiredQuantity ?? 0,
+			// New staples default to in-stock.
+			inStock: this.existing?.inStock ?? true,
 			unit,
 			category,
 			expirationDate,

@@ -13,12 +13,23 @@ import {
 	PlanOccurrence,
 } from "../parser/meal-plan";
 import { PantrySettings } from "../settings";
-import { GroceryItem, OneOffItem, RecipeIngredient } from "../types";
+import {
+	GroceryItem,
+	InventoryItem,
+	OneOffItem,
+	RecipeIngredient,
+} from "../types";
 import { buildGroceryList, groupForDisplay } from "./aggregator";
+import {
+	buildInStockNameSet,
+	excludeInStockFromGrocery,
+} from "../utils/inventory-stock";
 
 export interface SaveSink {
 	readonly settings: PantrySettings;
 	save(): Promise<void>;
+	/** Current inventory items, used to exclude in-stock staples from grocery. */
+	getInventoryItems(): InventoryItem[];
 }
 
 /** A recipe contributing to the list via the live meal-plan source. */
@@ -407,12 +418,27 @@ export class GroceryListManager extends Events {
 	}
 
 	private rebuildItems(): void {
-		this.items = buildGroceryList({
+		const built = buildGroceryList({
 			recipeIngredients: this.recipeIngredients,
 			oneOffs: this.sink.settings.state.oneOffs,
 			settings: this.sink.settings,
 			checkedKeys: this.sink.settings.state.checkedKeys,
 		});
+		if (this.sink.settings.excludeInStockFromGrocery) {
+			const inStock = buildInStockNameSet(this.sink.getInventoryItems());
+			this.items = excludeInStockFromGrocery(built, inStock);
+		} else {
+			this.items = built;
+		}
+	}
+
+	/**
+	 * Re-apply inventory exclusion without rescanning recipes.
+	 * Call when inventory stock toggles change.
+	 */
+	reapplyInventoryFilter(): void {
+		this.rebuildItems();
+		this.trigger("changed");
 	}
 
 	private async pruneStaleCheckedKeys(): Promise<void> {

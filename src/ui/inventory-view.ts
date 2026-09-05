@@ -16,7 +16,6 @@ import {
 	getStatusClass,
 	getStatusIcon,
 	getStatusLabel,
-	ItemStatus,
 } from "../utils/inventory-status";
 import { renderShopLinkButtons } from "./shop-link-buttons";
 import { AddItemModal } from "./add-inventory-item-modal";
@@ -127,8 +126,8 @@ export class InventoryView extends ItemView {
 
 		new ButtonComponent(actions)
 			.setIcon("clipboard-list")
-			.setTooltip("Copy restock list to clipboard")
-			.onClick(() => void this.exportRestockList());
+			.setTooltip("Copy out-of-stock list to clipboard")
+			.onClick(() => void this.exportOutOfStockList());
 
 		const clearBtn = new ButtonComponent(actions)
 			.setIcon("trash-2")
@@ -259,7 +258,7 @@ export class InventoryView extends ItemView {
 			}
 		}
 
-		// Restore keyboard focus after a stepper/keyboard-driven re-render.
+		// Restore keyboard focus after a stock-toggle re-render.
 		if (this.focusedItemId) {
 			const row = this.listEl.querySelector<HTMLElement>(
 				`[data-item-id="${CSS.escape(this.focusedItemId)}"]`,
@@ -272,9 +271,8 @@ export class InventoryView extends ItemView {
 	private renderColumnHeader(): void {
 		const row = this.listEl.createDiv({ cls: "pantry-item-grid pantry-column-header" });
 		row.createSpan(); // status column
+		row.createSpan({ text: "In", cls: "pantry-col-right", attr: { title: "In stock" } });
 		row.createSpan({ text: "Name" });
-		row.createSpan({ text: "Have", cls: "pantry-col-right" });
-		row.createSpan({ text: "Want", cls: "pantry-col-right" });
 		row.createSpan({ text: "Unit" });
 		row.createSpan({ text: "Shops" });
 		row.createSpan(); // actions column
@@ -290,7 +288,7 @@ export class InventoryView extends ItemView {
 		li.addEventListener("focus", () => {
 			this.focusedItemId = item.id;
 		});
-		li.addEventListener("keydown", (evt) => this.onRowKeydown(evt, li, item));
+		li.addEventListener("keydown", (evt) => this.onRowKeydown(evt, li));
 		li.addEventListener("mouseenter", () => this.scheduleHoverCard(li, item));
 		li.addEventListener("mouseleave", () => this.cancelHoverCard());
 
@@ -301,13 +299,25 @@ export class InventoryView extends ItemView {
 		setIcon(statusIcon, getStatusIcon(status));
 		statusIcon.setAttribute("title", getStatusLabel(status));
 
+		const stock = li.createEl("input", {
+			cls: "pantry-inventory-stock",
+			type: "checkbox",
+			attr: {
+				title: "In stock — when checked, matching grocery lines are omitted",
+				"aria-label": "In stock",
+			},
+		});
+		stock.checked = item.inStock !== false;
+		stock.addEventListener("change", () => {
+			void this.deps.manager.updateItem(item.id, {
+				inStock: stock.checked,
+			});
+		});
+
 		li.createSpan({
 			cls: "pantry-name",
 			text: toTitleCase(item.name),
 		});
-
-		this.renderQtyStepper(li, item, "quantity");
-		this.renderQtyStepper(li, item, "desiredQuantity");
 
 		li.createSpan({ cls: "pantry-unit", text: item.unit || "—" });
 
@@ -332,8 +342,8 @@ export class InventoryView extends ItemView {
 		removeBtn.addEventListener("click", () => this.removeItem(item.id));
 	}
 
-	/** Arrow keys move focus and adjust quantities without leaving the keyboard. */
-	private onRowKeydown(evt: KeyboardEvent, row: HTMLElement, item: InventoryItem): void {
+	/** Arrow keys move focus between rows. */
+	private onRowKeydown(evt: KeyboardEvent, row: HTMLElement): void {
 		switch (evt.key) {
 			case "ArrowUp":
 				evt.preventDefault();
@@ -342,22 +352,6 @@ export class InventoryView extends ItemView {
 			case "ArrowDown":
 				evt.preventDefault();
 				this.focusAdjacentRow(row, 1);
-				break;
-			case "ArrowLeft":
-				evt.preventDefault();
-				this.adjustQuantity(
-					item,
-					evt.shiftKey ? "desiredQuantity" : "quantity",
-					-1,
-				);
-				break;
-			case "ArrowRight":
-				evt.preventDefault();
-				this.adjustQuantity(
-					item,
-					evt.shiftKey ? "desiredQuantity" : "quantity",
-					1,
-				);
 				break;
 		}
 	}
@@ -402,14 +396,10 @@ export class InventoryView extends ItemView {
 		card.createDiv({ cls: "pantry-hover-card-title", text: toTitleCase(item.name) });
 
 		const rows: Array<[string, string]> = [
+			["In stock", item.inStock !== false ? "Yes" : "No"],
 			["Category", item.category || "Uncategorized"],
-			[
-				"Quantity",
-				`${item.quantity ?? 0} have / ${item.desiredQuantity ?? 0} want${
-					item.unit ? ` (${item.unit})` : ""
-				}`,
-			],
 		];
+		if (item.unit) rows.push(["Unit", item.unit]);
 		if (item.expirationDate) rows.push(["Expires", item.expirationDate]);
 		if (item.tags.length) rows.push(["Tags", item.tags.join(", ")]);
 		if (item.notes) rows.push(["Notes", item.notes]);
@@ -421,78 +411,24 @@ export class InventoryView extends ItemView {
 		}
 
 		const rect = row.getBoundingClientRect();
-		card.style.left = `${rect.left}px`;
-		card.style.top = `${rect.bottom + 4}px`;
+		const left = `${rect.left}px`;
+		const top = `${rect.bottom + 4}px`;
+		card.style.setProperty("left", left);
+		card.style.setProperty("top", top);
 
 		// Position check: shift card on-screen if it overflows after the browser
 		// renders its actual size. Use requestAnimationFrame to ensure layout is
 		// computed before repositioning.
-		requestAnimationFrame(() => {
+		window.requestAnimationFrame(() => {
 			const cardRect = card.getBoundingClientRect();
 			if (cardRect.right > window.innerWidth) {
-				card.style.left = `${Math.max(4, window.innerWidth - cardRect.width - 8)}px`;
+				const nextLeft = `${Math.max(4, window.innerWidth - cardRect.width - 8)}px`;
+				card.style.setProperty("left", nextLeft);
 			}
 			if (cardRect.bottom > window.innerHeight) {
-				card.style.top = `${Math.max(4, rect.top - cardRect.height - 4)}px`;
+				const nextTop = `${Math.max(4, rect.top - cardRect.height - 4)}px`;
+				card.style.setProperty("top", nextTop);
 			}
-		});
-	}
-
-	private adjustQuantity(
-		item: InventoryItem,
-		field: "quantity" | "desiredQuantity",
-		delta: number,
-	): void {
-		this.focusedItemId = item.id;
-		this.cancelHoverCard();
-		const next = Math.max(0, (item[field] ?? 0) + delta);
-		void this.deps.manager.updateItem(item.id, { [field]: next });
-	}
-
-	/** Render a compact +/- stepper bound to a numeric field on an item. */
-	private renderQtyStepper(
-		parent: HTMLElement,
-		item: InventoryItem,
-		field: "quantity" | "desiredQuantity",
-	): void {
-		const fieldLabel = field === "quantity" ? "current" : "desired";
-		const group = parent.createDiv({ cls: "pantry-qty-stepper" });
-
-		const minusBtn = group.createEl("button", {
-			cls: "clickable-icon pantry-qty-btn",
-			attr: { title: `Decrease ${fieldLabel} quantity` },
-		});
-		setIcon(minusBtn, "minus");
-
-		const input = group.createEl("input", {
-			cls: "pantry-qty-input",
-			type: "number",
-			attr: { min: "0", step: "1" },
-		});
-		input.value = String(item[field] ?? 0);
-
-		const plusBtn = group.createEl("button", {
-			cls: "clickable-icon pantry-qty-btn",
-			attr: { title: `Increase ${fieldLabel} quantity` },
-		});
-		setIcon(plusBtn, "plus");
-
-		const commit = (value: number) => {
-			this.focusedItemId = item.id;
-			this.cancelHoverCard();
-			const clamped = Math.max(0, value);
-			void this.deps.manager.updateItem(item.id, { [field]: clamped });
-		};
-
-		minusBtn.addEventListener("click", () => {
-			commit((item[field] ?? 0) - 1);
-		});
-		plusBtn.addEventListener("click", () => {
-			commit((item[field] ?? 0) + 1);
-		});
-		input.addEventListener("change", () => {
-			const parsed = parseFloat(input.value);
-			commit(!isNaN(parsed) ? parsed : 0);
 		});
 	}
 
@@ -528,29 +464,21 @@ export class InventoryView extends ItemView {
 		).open();
 	}
 
-	/** Copy a restock list (low/out of stock items + their shop links) to the clipboard. */
-	private async exportRestockList(): Promise<void> {
-		const restock = this.deps.manager
+	/** Copy out-of-stock items (and their shop links) to the clipboard. */
+	private async exportOutOfStockList(): Promise<void> {
+		const outOfStock = this.deps.manager
 			.getItems()
-			.filter((item) => {
-				const status = getItemStatus(item);
-				return status === ItemStatus.OUT_OF_STOCK || status === ItemStatus.LOW;
-			});
+			.filter((item) => item.inStock === false);
 
-		if (restock.length === 0) {
-			new Notice("Nothing to restock right now.");
+		if (outOfStock.length === 0) {
+			new Notice("Nothing marked out of stock.");
 			return;
 		}
 
-		const lines: string[] = ["Restock list:"];
-		for (const item of restock) {
-			const have = item.quantity ?? 0;
-			const want = item.desiredQuantity ?? 0;
-			const missing = Math.max(0, want - have);
-			const unitSuffix = item.unit ? ` ${item.unit}` : "";
-			lines.push(
-				`- ${toTitleCase(item.name)}: need ${missing}${unitSuffix} (have ${have}, want ${want})`,
-			);
+		const lines: string[] = ["Out of stock:"];
+		for (const item of outOfStock) {
+			const unitSuffix = item.unit ? ` (${item.unit})` : "";
+			lines.push(`- ${toTitleCase(item.name)}${unitSuffix}`);
 			if (item.shopLinks.length > 0) {
 				const shopText = item.shopLinks
 					.map((l) => `${l.nickname || "Shop"}: ${l.url}`)
@@ -562,7 +490,7 @@ export class InventoryView extends ItemView {
 		try {
 			await navigator.clipboard.writeText(lines.join("\n"));
 			new Notice(
-				`Copied restock list (${restock.length} item${restock.length === 1 ? "" : "s"}) to clipboard.`,
+				`Copied out-of-stock list (${outOfStock.length} item${outOfStock.length === 1 ? "" : "s"}) to clipboard.`,
 			);
 		} catch (e) {
 			new Notice(`Could not copy to clipboard: ${String(e)}`);

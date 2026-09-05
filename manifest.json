@@ -1,11 +1,10 @@
 {
-	"id": "pantry-dev",
+	"id": "pantry",
 	"name": "Pantry",
-	"version": "1.3.0-dev",
+	"version": "1.3.0",
 	"minAppVersion": "1.13.0",
 	"description": "Manage your recipes and generate grocery lists.",
 	"author": "TheEkrizdis",
-	"authorUrl": "",
 	"fundingUrl": {
 		"ko-fi": "https://ko-fi.com/ekrizdis",
 		"buy-me-a-coffee": "https://buymeacoffee.com/TheEkrizdis"

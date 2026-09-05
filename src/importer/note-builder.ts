@@ -56,6 +56,7 @@ function buildTemplateTokens(
 		protein: formatOptionalNumber(recipe.protein),
 		fat: formatOptionalNumber(recipe.fat),
 		carbs: formatOptionalNumber(recipe.carbs),
+		fiber: formatOptionalNumber(recipe.fiber),
 		prepTime: formatOptionalNumber(recipe.prepTime),
 		cookTime: formatOptionalNumber(recipe.cookTime),
 		totalTime: formatOptionalNumber(recipe.totalTime),

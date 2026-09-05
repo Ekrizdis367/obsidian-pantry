@@ -51,6 +51,7 @@ export function parseRecipeText(
 		protein: null,
 		fat: null,
 		carbs: null,
+		fiber: null,
 	};
 }
 

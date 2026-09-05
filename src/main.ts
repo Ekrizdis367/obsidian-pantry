@@ -24,6 +24,7 @@ import {
 	DEFAULT_INVENTORY_STATE_PATH,
 	emptyInventoryState,
 	inventoryStateHasContent,
+	mergeInventoryState,
 	normalizeInventoryItems,
 	parseInventoryState,
 	readInventoryStateFile,
@@ -58,6 +59,12 @@ export default class PantryPlugin extends Plugin {
 	/** Pending deferred recipe-view swap, so it can be cancelled/superseded. */
 	private autoOpenRecipeTimer: number | null = null;
 	/**
+	 * Recipe note paths the user explicitly opened as Markdown this session.
+	 * Auto-open skips these so switching away and back keeps editing mode (#13).
+	 * Cleared when the user chooses Recipe mode again for that path.
+	 */
+	private markdownPreferredPaths = new Set<string>();
+	/**
 	 * Last content we wrote to the shopping-state file. Used to ignore our own
 	 * vault modify events so a self-write does not trigger a redundant reload.
 	 */
@@ -78,6 +85,7 @@ export default class PantryPlugin extends Plugin {
 
 		const inventorySink: InventorySaveSink = makeInventorySaveSink(this);
 		this.inventoryManager = new InventoryManager(this.app, inventorySink);
+		await this.inventoryManager.refresh();
 
 		this.registerView(
 			VIEW_TYPE_GROCERY_LIST,
@@ -141,9 +149,16 @@ export default class PantryPlugin extends Plugin {
 			saveSettings: () => this.saveSettings(),
 			openView: () => this.activateView(),
 			openMealPlanner: () => this.activatePlannerView(),
+			openInventory: () => this.activateInventoryView(),
 			openCurrentAsRecipe: () => this.openCurrentAsRecipe(),
 			openCurrentAsMarkdown: () => this.openCurrentAsMarkdown(),
 		});
+
+		this.registerEvent(
+			this.inventoryManager.on("changed", () => {
+				this.manager.reapplyInventoryFilter();
+			}),
+		);
 
 		this.registerEvent(
 			this.app.workspace.on("file-open", (file) => {
@@ -180,7 +195,9 @@ export default class PantryPlugin extends Plugin {
 				settings: this.settings,
 				saveSettings: () => this.saveSettings(),
 				manager: this.manager,
+				inventoryManager: this.inventoryManager,
 				reloadShoppingState: () => this.loadShoppingState(),
+				reloadInventoryState: () => this.loadInventoryState(),
 			}),
 		);
 
@@ -207,6 +224,7 @@ export default class PantryPlugin extends Plugin {
 					void this.inventoryManager.refresh();
 					return;
 				}
+				this.markdownPreferredPaths.delete(file.path);
 				refresh();
 			}),
 		);
@@ -225,6 +243,9 @@ export default class PantryPlugin extends Plugin {
 						void this.saveSettings();
 					}
 					return;
+				}
+				if (this.markdownPreferredPaths.delete(oldPath) && file instanceof TFile) {
+					this.markdownPreferredPaths.add(file.path);
 				}
 				refresh();
 			}),
@@ -366,7 +387,9 @@ export default class PantryPlugin extends Plugin {
 		const hadLegacy = inventoryStateHasContent(legacy);
 		const fromVault = await readInventoryStateFile(this.app, path);
 		if (fromVault) {
-			this.settings.inventoryState = fromVault;
+			this.settings.inventoryState = hadLegacy
+				? mergeInventoryState(fromVault, legacy)
+				: fromVault;
 			// Drop any legacy copy still sitting in data.json.
 			await this.saveSettings();
 			return;
@@ -406,7 +429,12 @@ export default class PantryPlugin extends Plugin {
 		const raw = await this.app.vault.cachedRead(file);
 		if (raw === this.inventoryStateWriteToken) return;
 		const parsed = parseInventoryState(raw);
-		if (!parsed) return;
+		if (!parsed) {
+			console.error(
+				`pantry: failed to parse inventory state at ${file.path}`,
+			);
+			return;
+		}
 		this.settings.inventoryState = parsed;
 		await this.inventoryManager.refresh();
 	}
@@ -488,6 +516,7 @@ export default class PantryPlugin extends Plugin {
 		if (!leaf) return;
 		const file = this.app.workspace.getActiveFile();
 		if (!(file instanceof TFile) || file.extension !== "md") return;
+		this.clearMarkdownPreference(file.path);
 		await leaf.setViewState({
 			type: VIEW_TYPE_RECIPE,
 			state: { file: file.path },
@@ -512,6 +541,7 @@ export default class PantryPlugin extends Plugin {
 				? view.file
 				: this.app.workspace.getActiveFile();
 		if (!(file instanceof TFile)) return;
+		this.rememberMarkdownPreference(file.path);
 		await leaf.setViewState({
 			type: "markdown",
 			state: { file: file.path, mode: "source" },
@@ -542,6 +572,7 @@ export default class PantryPlugin extends Plugin {
 				.setIcon("chef-hat")
 				.setSection("pane")
 				.onClick(() => {
+					this.clearMarkdownPreference(file.path);
 					void leaf.setViewState({
 						type: VIEW_TYPE_RECIPE,
 						state: { file: file.path },
@@ -554,6 +585,15 @@ export default class PantryPlugin extends Plugin {
 	private maybeAutoOpenRecipe(file: TFile): void {
 		if (!this.settings.autoOpenRecipeView) return;
 		if (file.extension !== "md") return;
+		// User explicitly chose Markdown for this recipe — keep that choice
+		// across focus / tab switches unless "Always force recipe view" is on.
+		if (
+			!this.settings.forceRecipeViewOnOpen &&
+			this.markdownPreferredPaths.has(file.path)
+		) {
+			this.autoOpenRecipePendingPath = null;
+			return;
+		}
 
 		const cache = this.app.metadataCache.getFileCache(file);
 		const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
@@ -611,6 +651,14 @@ export default class PantryPlugin extends Plugin {
 		window.clearTimeout(this.autoOpenRecipeTimer);
 		this.autoOpenRecipeTimer = null;
 	}
+
+	private rememberMarkdownPreference(path: string): void {
+		this.markdownPreferredPaths.add(path);
+	}
+
+	private clearMarkdownPreference(path: string): void {
+		this.markdownPreferredPaths.delete(path);
+	}
 }
 
 function makeSaveSink(plugin: PantryPlugin): SaveSink {
@@ -619,6 +667,7 @@ function makeSaveSink(plugin: PantryPlugin): SaveSink {
 			return plugin.settings;
 		},
 		save: () => plugin.persistAll(),
+		getInventoryItems: () => plugin.inventoryManager.getItems(),
 	};
 }
 
@@ -674,6 +723,10 @@ function mergeSettings(raw: Partial<PantrySettings> | null): PantrySettings {
 			typeof raw.autoOpenRecipeView === "boolean"
 				? raw.autoOpenRecipeView
 				: base.autoOpenRecipeView,
+		forceRecipeViewOnOpen:
+			typeof raw.forceRecipeViewOnOpen === "boolean"
+				? raw.forceRecipeViewOnOpen
+				: base.forceRecipeViewOnOpen,
 		suppressInlineRecipeImage:
 			typeof raw.suppressInlineRecipeImage === "boolean"
 				? raw.suppressInlineRecipeImage
@@ -810,6 +863,10 @@ function mergeSettings(raw: Partial<PantrySettings> | null): PantrySettings {
 			raw.inventoryStatePath.trim()
 				? raw.inventoryStatePath.trim()
 				: DEFAULT_INVENTORY_STATE_PATH,
+		excludeInStockFromGrocery:
+			typeof raw.excludeInStockFromGrocery === "boolean"
+				? raw.excludeInStockFromGrocery
+				: base.excludeInStockFromGrocery,
 		inventoryState: {
 			items: normalizeInventoryItems(raw.inventoryState?.items),
 			collapsedGroups:

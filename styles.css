@@ -301,12 +301,6 @@
 	color: var(--text-muted);
 }
 
-.pantry-on-hand {
-	font-variant-numeric: tabular-nums;
-	color: var(--text-faint);
-	font-size: var(--font-ui-small);
-}
-
 .pantry-name {
 	color: var(--text-normal);
 	font-weight: var(--font-semibold);
@@ -559,7 +553,7 @@
 
 .pantry-recipe-body {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+	grid-template: auto / minmax(0, 1fr) minmax(220px, 280px);
 	gap: var(--size-4-3);
 	align-items: start;
 	flex-shrink: 0;
@@ -567,7 +561,7 @@
 
 @media (max-width: 700px) {
 	.pantry-recipe-body {
-		grid-template-columns: 1fr;
+		grid-template: auto / 1fr;
 	}
 
 	.pantry-recipe-image-card {
@@ -854,7 +848,7 @@
 
 .pantry-recipe-ingredient {
 	display: grid;
-	grid-template-columns: minmax(72px, max-content) 1fr auto;
+	grid-template: auto / minmax(72px, max-content) 1fr auto;
 	gap: var(--size-4-2);
 	align-items: baseline;
 	padding: var(--size-2-3) var(--size-4-2);
@@ -1045,7 +1039,7 @@
 
 .pantry-recipe-instruction {
 	display: grid;
-	grid-template-columns: 32px 1fr;
+	grid-template: auto / 32px 1fr;
 	gap: var(--size-4-2);
 	align-items: start;
 	padding: var(--size-4-2) var(--size-4-3);
@@ -1444,7 +1438,7 @@
 
 .pantry-planner-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+	grid-template: auto / repeat(auto-fill, minmax(300px, 1fr));
 	gap: var(--size-4-4);
 }
 
@@ -1646,7 +1640,7 @@
 
 .pantry-item-grid {
 	display: grid;
-	grid-template-columns: 18px minmax(60px, 200px) 74px 74px 46px minmax(0, 1fr) 56px;
+	grid-template: auto / 18px 22px minmax(80px, 1fr) 46px minmax(0, 1fr) 56px;
 	align-items: center;
 	gap: var(--size-2-2);
 }
@@ -1685,32 +1679,17 @@
 	white-space: nowrap;
 }
 
+.pantry-inventory-stock {
+	margin: 0;
+	justify-self: center;
+}
+
 .pantry-unit {
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-}
-
-.pantry-qty-stepper {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 2px;
-}
-
-.pantry-qty-btn {
-	padding: 1px;
-	width: 20px;
-	height: 20px;
-}
-
-.pantry-qty-input {
-	width: 2.6em;
-	text-align: center;
-	font-variant-numeric: tabular-nums;
-	padding: 1px 2px;
 }
 
 .pantry-shop-links {
@@ -1854,7 +1833,7 @@
 	}
 
 	.pantry-recipe-ingredient {
-		grid-template-columns: minmax(60px, max-content) 1fr;
+		grid-template: auto / minmax(60px, max-content) 1fr;
 		gap: var(--size-2-2) var(--size-4-1);
 	}
 
@@ -1867,12 +1846,12 @@
 	}
 
 	.pantry-recipe-instruction {
-		grid-template-columns: 28px 1fr;
+		grid-template: auto / 28px 1fr;
 		padding: var(--size-4-2) var(--size-2-3);
 	}
 
 	.pantry-planner-grid {
-		grid-template-columns: 1fr;
+		grid-template: auto / 1fr;
 	}
 
 	.pantry-planner-header {

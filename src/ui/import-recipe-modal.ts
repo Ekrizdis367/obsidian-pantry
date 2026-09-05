@@ -32,7 +32,7 @@ export class ImportRecipeModal extends Modal {
 			.setDesc("Paste the address of a recipe page with structured data.")
 			.addText((text) =>
 				text
-					.setPlaceholder("https://www.example.com/recipes/...")
+					.setPlaceholder("Paste recipe page address")
 					.onChange((value) => {
 						this.url = value.trim();
 					}),
