@@ -34,13 +34,6 @@ export interface PantrySettings {
 	autoCollapseCompleted: boolean;
 	/** Auto-open notes whose recipe-type frontmatter matches `recipeTypeValue` in the recipe view. */
 	autoOpenRecipeView: boolean;
-	/**
-	 * When true with auto-open, always reopen matching notes in recipe view —
-	 * even if the user previously switched that note to Markdown this session.
-	 * When false (default), Markdown preference is remembered until Recipe mode
-	 * is chosen again.
-	 */
-	forceRecipeViewOnOpen: boolean;
 	/** Frontmatter property name read to identify a recipe note (default: "type"). */
 	recipeTypeProperty: string;
 	/** The frontmatter value (under `recipeTypeProperty`) that marks a recipe (default: "recipe"). */
@@ -258,7 +251,6 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 	categoryOverrides: [],
 	autoCollapseCompleted: true,
 	autoOpenRecipeView: true,
-	forceRecipeViewOnOpen: false,
 	recipeTypeProperty: "type",
 	recipeTypeValue: "recipe",
 	suppressInlineRecipeImage: false,

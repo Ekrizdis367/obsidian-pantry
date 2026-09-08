@@ -1,7 +1,7 @@
 {
 	"id": "pantry",
 	"name": "Pantry",
-	"version": "1.3.0",
+	"version": "1.3.1",
 	"minAppVersion": "1.13.0",
 	"description": "Manage your recipes and generate grocery lists.",
 	"author": "TheEkrizdis",

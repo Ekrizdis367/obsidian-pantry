@@ -59,11 +59,12 @@ export default class PantryPlugin extends Plugin {
 	/** Pending deferred recipe-view swap, so it can be cancelled/superseded. */
 	private autoOpenRecipeTimer: number | null = null;
 	/**
-	 * Recipe note paths the user explicitly opened as Markdown this session.
-	 * Auto-open skips these so switching away and back keeps editing mode (#13).
-	 * Cleared when the user chooses Recipe mode again for that path.
+	 * Last file path observed per leaf for auto-open. Used to skip `file-open`
+	 * events that are just tab/focus returns to a leaf that already has the
+	 * note open (#13) — fresh opens and in-leaf navigations still auto-open.
+	 * Closed leaves are dropped on layout-change.
 	 */
-	private markdownPreferredPaths = new Set<string>();
+	private leafOpenPaths = new Map<WorkspaceLeaf, string>();
 	/**
 	 * Last content we wrote to the shopping-state file. Used to ignore our own
 	 * vault modify events so a self-write does not trigger a redundant reload.
@@ -166,8 +167,20 @@ export default class PantryPlugin extends Plugin {
 					this.autoOpenRecipePendingPath = null;
 					return;
 				}
+				// Obsidian also fires file-open when switching back to an
+				// already-open tab. Skip auto-open in that case so Markdown
+				// (or any non-recipe mode) sticks until the note is closed.
+				if (this.noteAlreadyOpenInActiveLeaf(file)) {
+					return;
+				}
 				this.autoOpenRecipePendingPath = file.path;
 				this.maybeAutoOpenRecipe(file);
+			}),
+		);
+
+		this.registerEvent(
+			this.app.workspace.on("layout-change", () => {
+				this.pruneClosedLeafOpenPaths();
 			}),
 		);
 
@@ -224,7 +237,7 @@ export default class PantryPlugin extends Plugin {
 					void this.inventoryManager.refresh();
 					return;
 				}
-				this.markdownPreferredPaths.delete(file.path);
+				this.forgetLeafOpenPath(file.path);
 				refresh();
 			}),
 		);
@@ -244,8 +257,10 @@ export default class PantryPlugin extends Plugin {
 					}
 					return;
 				}
-				if (this.markdownPreferredPaths.delete(oldPath) && file instanceof TFile) {
-					this.markdownPreferredPaths.add(file.path);
+				if (file instanceof TFile) {
+					this.renameLeafOpenPath(oldPath, file.path);
+				} else {
+					this.forgetLeafOpenPath(oldPath);
 				}
 				refresh();
 			}),
@@ -516,7 +531,7 @@ export default class PantryPlugin extends Plugin {
 		if (!leaf) return;
 		const file = this.app.workspace.getActiveFile();
 		if (!(file instanceof TFile) || file.extension !== "md") return;
-		this.clearMarkdownPreference(file.path);
+		this.leafOpenPaths.set(leaf, file.path);
 		await leaf.setViewState({
 			type: VIEW_TYPE_RECIPE,
 			state: { file: file.path },
@@ -535,13 +550,16 @@ export default class PantryPlugin extends Plugin {
 		// Cancel any in-flight auto-open retries so they don't fight the
 		// user's explicit switch back to Markdown.
 		this.clearAutoOpenRecipeTimer();
+		this.autoOpenRecipePendingPath = null;
 		const view = leaf.view;
 		const file =
 			view instanceof RecipeView
 				? view.file
 				: this.app.workspace.getActiveFile();
 		if (!(file instanceof TFile)) return;
-		this.rememberMarkdownPreference(file.path);
+		// Record the path so a later tab-focus file-open is treated as a
+		// refocus, not a fresh open.
+		this.leafOpenPaths.set(leaf, file.path);
 		await leaf.setViewState({
 			type: "markdown",
 			state: { file: file.path, mode: "source" },
@@ -572,7 +590,7 @@ export default class PantryPlugin extends Plugin {
 				.setIcon("chef-hat")
 				.setSection("pane")
 				.onClick(() => {
-					this.clearMarkdownPreference(file.path);
+					this.leafOpenPaths.set(leaf, file.path);
 					void leaf.setViewState({
 						type: VIEW_TYPE_RECIPE,
 						state: { file: file.path },
@@ -582,18 +600,51 @@ export default class PantryPlugin extends Plugin {
 		});
 	}
 
+	/**
+	 * True when the active leaf already had this file open. Used to ignore
+	 * focus/tab-return `file-open` events so auto-open only runs on fresh
+	 * opens and in-leaf navigations.
+	 */
+	private noteAlreadyOpenInActiveLeaf(file: TFile): boolean {
+		const leaf = this.app.workspace.getMostRecentLeaf();
+		if (!leaf) return false;
+		const previous = this.leafOpenPaths.get(leaf);
+		this.leafOpenPaths.set(leaf, file.path);
+		return previous === file.path;
+	}
+
+	/** Drop tracking for leaves that no longer exist (note closed). */
+	private pruneClosedLeafOpenPaths(): void {
+		const openLeaves = new Set<WorkspaceLeaf>();
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			openLeaves.add(leaf);
+		});
+		for (const leaf of this.leafOpenPaths.keys()) {
+			if (!openLeaves.has(leaf)) {
+				this.leafOpenPaths.delete(leaf);
+			}
+		}
+	}
+
+	private forgetLeafOpenPath(path: string): void {
+		for (const [leaf, openPath] of this.leafOpenPaths) {
+			if (openPath === path) {
+				this.leafOpenPaths.delete(leaf);
+			}
+		}
+	}
+
+	private renameLeafOpenPath(oldPath: string, newPath: string): void {
+		for (const [leaf, openPath] of this.leafOpenPaths) {
+			if (openPath === oldPath) {
+				this.leafOpenPaths.set(leaf, newPath);
+			}
+		}
+	}
+
 	private maybeAutoOpenRecipe(file: TFile): void {
 		if (!this.settings.autoOpenRecipeView) return;
 		if (file.extension !== "md") return;
-		// User explicitly chose Markdown for this recipe — keep that choice
-		// across focus / tab switches unless "Always force recipe view" is on.
-		if (
-			!this.settings.forceRecipeViewOnOpen &&
-			this.markdownPreferredPaths.has(file.path)
-		) {
-			this.autoOpenRecipePendingPath = null;
-			return;
-		}
 
 		const cache = this.app.metadataCache.getFileCache(file);
 		const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
@@ -613,6 +664,7 @@ export default class PantryPlugin extends Plugin {
 		}
 
 		this.autoOpenRecipePendingPath = null;
+		this.leafOpenPaths.set(leaf, file.path);
 		this.scheduleRecipeViewSwap(file);
 	}
 
@@ -650,14 +702,6 @@ export default class PantryPlugin extends Plugin {
 		if (this.autoOpenRecipeTimer === null) return;
 		window.clearTimeout(this.autoOpenRecipeTimer);
 		this.autoOpenRecipeTimer = null;
-	}
-
-	private rememberMarkdownPreference(path: string): void {
-		this.markdownPreferredPaths.add(path);
-	}
-
-	private clearMarkdownPreference(path: string): void {
-		this.markdownPreferredPaths.delete(path);
 	}
 }
 
@@ -723,10 +767,6 @@ function mergeSettings(raw: Partial<PantrySettings> | null): PantrySettings {
 			typeof raw.autoOpenRecipeView === "boolean"
 				? raw.autoOpenRecipeView
 				: base.autoOpenRecipeView,
-		forceRecipeViewOnOpen:
-			typeof raw.forceRecipeViewOnOpen === "boolean"
-				? raw.forceRecipeViewOnOpen
-				: base.forceRecipeViewOnOpen,
 		suppressInlineRecipeImage:
 			typeof raw.suppressInlineRecipeImage === "boolean"
 				? raw.suppressInlineRecipeImage

@@ -112,14 +112,8 @@ export class PantrySettingsTab extends PluginSettingTab {
 				items: [
 					{
 						name: "Auto-open recipe view",
-						desc: "Open notes whose recipe type matches the property and value below in the recipe view automatically.",
+						desc: "Open notes whose recipe type matches the property and value below in the recipe view automatically. Only applies when a note is freshly opened — switching tabs keeps the current view.",
 						render: (setting) => this.wireAutoOpenRecipeView(setting),
-					},
-					{
-						name: "Always force recipe view",
-						desc: "When auto-open is on, always reopen matching notes in recipe view — even after you switched that note to Markdown. Off by default so Edit as Markdown sticks when you switch away and back.",
-						render: (setting) =>
-							this.wireForceRecipeViewOnOpen(setting),
 					},
 					{
 						name: "Recipe type property",
@@ -426,17 +420,6 @@ export class PantrySettingsTab extends PluginSettingTab {
 				.setValue(this.host.settings.autoOpenRecipeView)
 				.onChange(async (value) => {
 					this.host.settings.autoOpenRecipeView = value;
-					await this.host.saveSettings();
-				}),
-		);
-	}
-
-	private wireForceRecipeViewOnOpen(setting: Setting): void {
-		setting.addToggle((toggle) =>
-			toggle
-				.setValue(this.host.settings.forceRecipeViewOnOpen)
-				.onChange(async (value) => {
-					this.host.settings.forceRecipeViewOnOpen = value;
 					await this.host.saveSettings();
 				}),
 		);
