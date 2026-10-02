@@ -1,6 +1,10 @@
 import { App, requestUrl } from "obsidian";
 import { ensureParentFolders, titleToFilename } from "./note-builder";
 
+/** Cap on downloaded image size; keeps multi-MB binaries out of the vault. */
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const DOWNLOAD_TIMEOUT_MS = 15_000;
+
 /**
  * Download a remote image into the vault and return its vault-relative path.
  *
@@ -27,15 +31,24 @@ export async function downloadImportedImage(
 		.filter((part) => part && part !== "." && part !== "..")
 		.join("/");
 
-	const response = await requestUrl({ url: absoluteUrl, method: "GET" }).catch(
-		() => null,
-	);
+	const response = await withTimeout(
+		requestUrl({ url: absoluteUrl, method: "GET" }),
+		DOWNLOAD_TIMEOUT_MS,
+	).catch(() => null);
 	if (!response) return null;
 
 	const contentType = (response.headers?.["content-type"] ?? "")
 		.split(";")[0] ?? "";
 	// Any image/* content type is accepted; the subtype becomes the extension.
 	if (!contentType.startsWith("image/")) return null;
+
+	// requestUrl buffers the whole body, so this guards vault writes, not memory.
+	const declaredSize = Number(response.headers?.["content-length"]);
+	if (Number.isFinite(declaredSize) && declaredSize > MAX_IMAGE_BYTES) {
+		return null;
+	}
+	if (response.arrayBuffer.byteLength > MAX_IMAGE_BYTES) return null;
+
 	const ext = contentType.slice("image/".length).replace(/[^a-z0-9]/g, "") || "png";
 	const name = `${titleToFilename(recipeTitle)}-${shortHash(absoluteUrl)}.${ext}`;
 	const filePath = folder ? `${folder}/${name}` : name;
@@ -66,4 +79,22 @@ function shortHash(value: string): string {
 	let hash = 0;
 	for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) | 0;
 	return Math.abs(hash).toString(36);
+}
+
+/**
+ * Race the request against a timeout. `requestUrl` is the only CORS-bypassing
+ * download API and it has no timeout or abort hook, so racing its promise is
+ * the minimal portable fix (`node:timers/promises` would break mobile).
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+	let timer: number | undefined;
+	return Promise.race([
+		promise.finally(() => window.clearTimeout(timer)),
+		new Promise<never>((_, reject) => {
+			timer = window.setTimeout(
+				() => reject(new Error("Image download timed out")),
+				ms,
+			);
+		}),
+	]);
 }
