@@ -100,7 +100,7 @@ export class ImportRecipeModal extends Modal {
 		}
 
 		const settings = this.host.getSettings();
-		if (settings.downloadImportedImages) {
+		if (settings.downloadImportedImages && recipe.image.trim()) {
 			// Empty image path setting falls back to the import folder so an
 			// enabled toggle never fails on a blank path.
 			const imageFolder =
