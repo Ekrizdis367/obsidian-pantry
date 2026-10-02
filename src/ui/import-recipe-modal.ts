@@ -104,6 +104,7 @@ export class ImportRecipeModal extends Modal {
 			const localPath = await downloadImportedImage(
 				this.app,
 				recipe.image,
+				this.url,
 				settings.downloadImportedImagePath,
 				recipe.title,
 			);

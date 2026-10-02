@@ -13,13 +13,17 @@ import { ensureParentFolders, titleToFilename } from "./note-builder";
 export async function downloadImportedImage(
 	app: App,
 	imageUrl: string,
+	pageUrl: string,
 	targetFolder: string,
 	recipeTitle: string,
 ): Promise<string | null> {
+	const absoluteUrl = resolveImageUrl(imageUrl, pageUrl);
+	if (!absoluteUrl) return null;
+
 	const folder = targetFolder.trim().replace(/\/+$/, "");
 	if (!folder) return null;
 
-	const response = await requestUrl({ url: imageUrl, method: "GET" }).catch(
+	const response = await requestUrl({ url: absoluteUrl, method: "GET" }).catch(
 		() => null,
 	);
 	if (!response) return null;
@@ -36,4 +40,16 @@ export async function downloadImportedImage(
 	await ensureParentFolders(app, filePath);
 	await app.vault.createBinary(filePath, response.arrayBuffer);
 	return filePath;
+}
+
+/** Get an absolute url, in case image URL is relative. */
+function resolveImageUrl(imageUrl: string, pageUrl: string): string | null {
+	const trimmed = imageUrl.trim();
+	if (!trimmed) return null;
+	try {
+		// if imageUrl is relative or absolute, this will return absolute url for you.
+		return new URL(trimmed, pageUrl).href;
+	} catch {
+		return null;
+	}
 }
