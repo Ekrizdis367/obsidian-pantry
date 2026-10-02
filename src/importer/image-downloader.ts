@@ -20,7 +20,12 @@ export async function downloadImportedImage(
 	const absoluteUrl = resolveImageUrl(imageUrl, pageUrl);
 	if (!absoluteUrl) return null;
 
-	const folder = targetFolder.trim().replace(/\/+$/, "");
+	// Drop `.`, `..`, and empty segments so a save folder can't escape the vault.
+	const folder = targetFolder
+		.trim()
+		.split("/")
+		.filter((part) => part && part !== "." && part !== "..")
+		.join("/");
 
 	const response = await requestUrl({ url: absoluteUrl, method: "GET" }).catch(
 		() => null,
@@ -32,7 +37,6 @@ export async function downloadImportedImage(
 	// Any image/* content type is accepted; the subtype becomes the extension.
 	if (!contentType.startsWith("image/")) return null;
 	const ext = contentType.slice("image/".length).replace(/[^a-z0-9]/g, "") || "png";
-
 	const name = `${titleToFilename(recipeTitle)}-${shortHash(absoluteUrl)}.${ext}`;
 	const filePath = folder ? `${folder}/${name}` : name;
 	if (await app.vault.adapter.exists(filePath)) return filePath;
