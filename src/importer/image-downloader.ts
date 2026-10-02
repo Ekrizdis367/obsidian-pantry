@@ -5,6 +5,20 @@ import { ensureParentFolders, titleToFilename } from "./note-builder";
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 15_000;
 
+/** Common image MIME types mapped to file extensions (subtype alone breaks `svg+xml`). */
+const MIME_EXTENSIONS: Record<string, string> = {
+	"image/jpeg": "jpg",
+	"image/jpg": "jpg",
+	"image/png": "png",
+	"image/gif": "gif",
+	"image/webp": "webp",
+	"image/svg+xml": "svg",
+	"image/avif": "avif",
+	"image/bmp": "bmp",
+	"image/tiff": "tiff",
+	"image/x-icon": "ico",
+};
+
 /**
  * Download a remote image into the vault and return its vault-relative path.
  *
@@ -37,9 +51,12 @@ export async function downloadImportedImage(
 	).catch(() => null);
 	if (!response) return null;
 
-	const contentType = (response.headers?.["content-type"] ?? "")
-		.split(";")[0] ?? "";
-	// Any image/* content type is accepted; the subtype becomes the extension.
+	// Normalize the content-type.
+	// Example input/output: `IMAGE/PNG ; charset=utf-8` -> `image/png` (media types are case-insensitive).
+	const rawContentType = response.headers?.["content-type"] ?? "";
+	const contentType = (rawContentType.split(";")[0] ?? "")
+		.trim()
+		.toLowerCase();
 	if (!contentType.startsWith("image/")) return null;
 
 	// requestUrl buffers the whole body, so this guards vault writes, not memory.
@@ -49,7 +66,9 @@ export async function downloadImportedImage(
 	}
 	if (response.arrayBuffer.byteLength > MAX_IMAGE_BYTES) return null;
 
-	const ext = contentType.slice("image/".length).replace(/[^a-z0-9]/g, "") || "png";
+	const ext =
+		MIME_EXTENSIONS[contentType] ??
+		(contentType.slice("image/".length).replace(/[^a-z0-9]/g, "") || "png");
 	const name = `${titleToFilename(recipeTitle)}-${shortHash(absoluteUrl)}.${ext}`;
 	const filePath = folder ? `${folder}/${name}` : name;
 	if (await app.vault.adapter.exists(filePath)) return filePath;
