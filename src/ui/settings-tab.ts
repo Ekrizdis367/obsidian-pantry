@@ -174,7 +174,7 @@ export class PantrySettingsTab extends PluginSettingTab {
 					},
 					{
 						name: "Image save location",
-						desc: "Vault-relative folder for downloaded recipe images.",
+						desc: "Vault-relative folder for downloaded recipe images. Leave blank to use the import folder.",
 						visible: () => this.host.settings.downloadImportedImages,
 						render: (setting) => this.wireImportImageFolder(setting),
 					},

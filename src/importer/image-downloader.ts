@@ -21,7 +21,6 @@ export async function downloadImportedImage(
 	if (!absoluteUrl) return null;
 
 	const folder = targetFolder.trim().replace(/\/+$/, "");
-	if (!folder) return null;
 
 	const response = await requestUrl({ url: absoluteUrl, method: "GET" }).catch(
 		() => null,
@@ -34,7 +33,8 @@ export async function downloadImportedImage(
 	if (!contentType.startsWith("image/")) return null;
 	const ext = contentType.slice("image/".length).replace(/[^a-z0-9]/g, "") || "png";
 
-	const filePath = `${folder}/${titleToFilename(recipeTitle)}-${shortHash(absoluteUrl)}.${ext}`;
+	const name = `${titleToFilename(recipeTitle)}-${shortHash(absoluteUrl)}.${ext}`;
+	const filePath = folder ? `${folder}/${name}` : name;
 	if (await app.vault.adapter.exists(filePath)) return filePath;
 
 	await ensureParentFolders(app, filePath);
