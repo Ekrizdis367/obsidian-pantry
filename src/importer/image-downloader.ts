@@ -34,7 +34,7 @@ export async function downloadImportedImage(
 	if (!contentType.startsWith("image/")) return null;
 	const ext = contentType.slice("image/".length).replace(/[^a-z0-9]/g, "") || "png";
 
-	const filePath = `${folder}/${titleToFilename(recipeTitle)}.${ext}`;
+	const filePath = `${folder}/${titleToFilename(recipeTitle)}-${shortHash(absoluteUrl)}.${ext}`;
 	if (await app.vault.adapter.exists(filePath)) return filePath;
 
 	await ensureParentFolders(app, filePath);
@@ -52,4 +52,14 @@ function resolveImageUrl(imageUrl: string, pageUrl: string): string | null {
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Deterministic short hash so the same image URL always maps to the same file.
+ * Base36, at most 6 chars (36^6 > Number's int32 range).
+ */
+function shortHash(value: string): string {
+	let hash = 0;
+	for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+	return Math.abs(hash).toString(36);
 }
