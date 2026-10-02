@@ -22,11 +22,12 @@ const MIME_EXTENSIONS: Record<string, string> = {
 /**
  * Download a remote image into the vault and return its vault-relative path.
  *
- * Returns null when the request fails, the folder setting is empty, or the
- * response isn't an image — callers keep the original remote URL then.
- * Reuses an existing file at the target path instead of overwriting, so
- * re-importing a recipe (or sharing a hero image across recipes) never
- * duplicates or clobbers images.
+ * Returns null when the URL is empty/unresolvable, the request fails or times
+ * out, the response isn't an image, it's too large, or the vault write fails —
+ * callers keep the original remote URL then.
+ * The filename carries a short hash of the image URL so recipes sharing a
+ * title don't reuse each other's photo, while re-importing the same recipe
+ * reuses its file instead of duplicating it.
  */
 export async function downloadImportedImage(
 	app: App,
@@ -71,10 +72,15 @@ export async function downloadImportedImage(
 		(contentType.slice("image/".length).replace(/[^a-z0-9]/g, "") || "png");
 	const name = `${titleToFilename(recipeTitle)}-${shortHash(absoluteUrl)}.${ext}`;
 	const filePath = folder ? `${folder}/${name}` : name;
-	if (await app.vault.adapter.exists(filePath)) return filePath;
 
-	await ensureParentFolders(app, filePath);
-	await app.vault.createBinary(filePath, response.arrayBuffer);
+	// Vault write failures (permissions, bad path) must not abort the import.
+	try {
+		if (await app.vault.adapter.exists(filePath)) return filePath;
+		await ensureParentFolders(app, filePath);
+		await app.vault.createBinary(filePath, response.arrayBuffer);
+	} catch {
+		return null;
+	}
 	return filePath;
 }
 
