@@ -28,7 +28,7 @@ Recipe view with hero image, scaled ingredients, instructions, and portion multi
 - **Favorites.** Star a recipe with one click and the `favorite: true` frontmatter is set automatically. Used by the meal recommender.
 - **Kids approved.** Thumbs-up / thumbs-down buttons in the recipe view write `kidsApproved: true` or `kidsApproved: false` to frontmatter (click again to clear). Handy for filtering kid-friendly meals in Bases or your own workflows.
 - **Last-made tracking & cook counts.** Optionally stamp today's date into `lastMade` and increment `cookedCount` whenever you add a recipe to the grocery list — powering the cooking-stats leaderboard.
-- **Weekly meal planner.** Plan the meals you actually cook — enable only dinner, or breakfast through snacks — in a grid view backed by a plain-Markdown note of recipe links. Push the whole plan to the grocery list with one **Add to grocery list** button (or enable continuous auto-sync), import any existing meal-plan note full of links you already maintain, and **auto-fill empty slots** from recipe `status` and `meal` frontmatter.
+- **Weekly meal planner.** Plan the meals you actually cook — enable only dinner, or breakfast through snacks — in a grid view backed by a plain-Markdown note of recipe links. Drag recipes between days and meal slots to reschedule. Push the whole plan to the grocery list with one **Add to grocery list** button (or enable continuous auto-sync), import any existing meal-plan note full of links you already maintain, and **auto-fill empty slots** from optional recipe `status` and `meal` frontmatter (with per-slot meal aliases).
 - **Import from URL.** Paste a recipe page address and Pantry extracts structured data (schema.org JSON-LD) into a normalized recipe note with the full Pantry frontmatter shape, then opens it in the recipe view.
 - **Import from text.** Paste recipe text copied from a website, email, or PDF and Pantry parses it into the same normalized note — ideal for pages with many recipes, paywalled sites, or anything without structured data.
 - **Meal recommender.** "Suggest a meal" surfaces recipes you haven't cooked recently, with optional filters for favorites and allergens.
@@ -109,8 +109,8 @@ Frontmatter properties the view reads and writes:
 | `prepTime`, `cookTime`, `totalTime` | number | Minutes. `totalTime` is computed from `prepTime + cookTime` when not provided. |
 | `favorite` | boolean | Set with one click via the star button in the recipe view. |
 | `kidsApproved` | boolean | Set with the thumbs-up (`true`) or thumbs-down (`false`) buttons in the recipe view. Absent when neither is selected. |
-| `status` | number | Optional priority for meal-planner auto-fill (lower numbers are weighted more heavily). Not read by the recipe view itself. |
-| `meal` | array of strings | Optional meal tags (`breakfast`, `lunch`, `dinner`, `snacks`) matched when auto-filling empty planner slots. |
+| `status` | number | Optional priority for meal-planner auto-fill (lower numbers are weighted more heavily). Recipes without status are still eligible. Not read by the recipe view itself. |
+| `meal` | array of strings | Optional meal tags matched when auto-filling empty planner slots (slot names by default, or custom aliases in settings). |
 | `lastMade` | date | Auto-stamped to today's date when you add the recipe to the grocery list (configurable in settings). |
 | `cookedCount` | number | Auto-incremented when `lastMade` advances to a new day. Powers the cooking stats leaderboard. |
 | `source` | string | Original recipe page URL. Written automatically when you import from a URL. |
@@ -231,14 +231,15 @@ Already keep your own master meal-plan note full of recipe links? Run **Import m
 
 ### Auto-fill from status
 
-If your recipes already carry a numeric **`status`** field (1 = cook soonest, 5 = lowest priority) and optional **`meal`** tags (`breakfast`, `lunch`, `dinner`, `snacks`), Pantry can fill **empty** planner slots for you without touching slots you've already picked manually.
+Pantry can fill **empty** planner slots from your recipe library without touching slots you've already picked manually.
 
 - Press **Auto-fill empty slots** in the planner header, or run **Auto-fill empty meal planner slots** from the command palette.
 - Only blank cells are filled — existing picks stay as-is. Start from an empty grid to populate the whole week in one go.
-- By default, recipes with `status` of **1 through 5** are eligible; lower numbers are weighted more heavily (a `1` is five times as likely as a `5`).
-- When a recipe's `meal` list includes the slot name, it is preferred for that slot. Recipes with no `meal` value can fill any slot.
+- **`status` is optional.** Recipes with no status are eligible. When a numeric status is present, values of **1 through 5** (configurable) are eligible, and lower numbers are weighted more heavily.
+- Optional **`meal`** tags are matched against each slot. By default that means the slot name (`breakfast`, `lunch`, `dinner`, `snacks` — and `snack` for Snacks). Under **Settings → Meal planning → Auto-fill meal aliases** you can map custom tags (e.g. set Lunch and Dinner to `main`) so one tag can fill multiple slots. Recipes with no `meal` value can fill any slot.
+- Drag a recipe chip to another day or meal slot to reschedule it without removing and re-adding.
 
-Configure the frontmatter property names and allowed status values under **Settings → Meal planning → Auto-fill status property**, **Auto-fill status values**, and **Auto-fill meal property**.
+Configure the frontmatter property names, allowed status values, and meal aliases under **Settings → Meal planning**.
 
 ### Meal planning settings
 
@@ -248,9 +249,10 @@ Configure the frontmatter property names and allowed status values under **Setti
 | Include weekend days | Off | Adds Saturday and Sunday to the grid (weekdays only when off). |
 | Meal plan note | *(empty)* | Vault path of the Markdown note the planner reads and writes. Created automatically if missing. |
 | Auto-sync meal plan to the shopping list | Off | When on, linked recipes in the plan note continuously contribute to the grocery list as you edit the planner. |
-| Auto-fill status property | `status` | Frontmatter field used when auto-filling empty slots. |
-| Auto-fill status values | `1, 2, 3, 4, 5` | Numeric values eligible for auto-fill. Lower numbers are weighted more heavily. |
-| Auto-fill meal property | `meal` | Frontmatter list matched against each slot name (`breakfast`, `lunch`, `dinner`, `snacks`). Recipes with no value can fill any slot. |
+| Auto-fill status property | `status` | Optional frontmatter field for weighting auto-fill. Recipes without it remain eligible. |
+| Auto-fill status values | `1, 2, 3, 4, 5` | Numeric values eligible when a recipe has a status. Lower numbers are weighted more heavily. |
+| Auto-fill meal property | `meal` | Frontmatter list matched against each slot (or its aliases). Recipes with no value can fill any slot. |
+| Auto-fill meal aliases | *(slot name)* | Optional comma-separated tags per slot (e.g. Lunch / Dinner → `main`). |
 
 ```yaml
 ---

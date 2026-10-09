@@ -30,6 +30,15 @@ import {
 
 export const VIEW_TYPE_MEAL_PLANNER = "pantry-meal-planner";
 
+/** Drag payload MIME for moving a planned recipe between slots. */
+const DRAG_RECIPE_TYPE = "application/x-pantry-planner-recipe";
+
+interface PlannerDragPayload {
+	day: string;
+	slot: string;
+	index: number;
+}
+
 interface PlannerDeps {
 	manager: GroceryListManager;
 	getSettings: () => PantrySettings;
@@ -236,6 +245,7 @@ export class MealPlannerView extends ItemView {
 
 			const files = this.grid.cells[day]?.[slot] ?? [];
 			const list = slotEl.createDiv({ cls: "pantry-planner-chips" });
+			this.wireSlotDropTarget(list, day, slot);
 			files.forEach((file, index) => {
 				this.renderChip(list, day, slot, file, index);
 			});
@@ -268,6 +278,21 @@ export class MealPlannerView extends ItemView {
 		index: number,
 	): void {
 		const chip = parent.createDiv({ cls: "pantry-planner-chip" });
+		chip.draggable = true;
+		chip.setAttribute("title", "Drag to another day or meal");
+		chip.addEventListener("dragstart", (evt) => {
+			const payload: PlannerDragPayload = { day, slot, index };
+			evt.dataTransfer?.setData(
+				DRAG_RECIPE_TYPE,
+				JSON.stringify(payload),
+			);
+			if (evt.dataTransfer) evt.dataTransfer.effectAllowed = "move";
+			chip.addClass("is-dragging");
+		});
+		chip.addEventListener("dragend", () => {
+			chip.removeClass("is-dragging");
+		});
+
 		const link = chip.createEl("a", {
 			cls: "pantry-planner-chip-link",
 			text: file.basename,
@@ -284,6 +309,52 @@ export class MealPlannerView extends ItemView {
 		setIcon(remove, "x");
 		remove.addEventListener("click", () => {
 			void this.removeRecipe(day, slot, index);
+		});
+	}
+
+	/** Accept chips dragged from any planner slot and reschedule them here. */
+	private wireSlotDropTarget(
+		el: HTMLElement,
+		targetDay: string,
+		targetSlot: string,
+	): void {
+		el.addEventListener("dragover", (evt) => {
+			if (!evt.dataTransfer?.types.includes(DRAG_RECIPE_TYPE)) return;
+			evt.preventDefault();
+			evt.dataTransfer.dropEffect = "move";
+			el.addClass("is-drop-target");
+		});
+		el.addEventListener("dragleave", (evt) => {
+			if (evt.relatedTarget instanceof Node && el.contains(evt.relatedTarget)) {
+				return;
+			}
+			el.removeClass("is-drop-target");
+		});
+		el.addEventListener("drop", (evt) => {
+			evt.preventDefault();
+			el.removeClass("is-drop-target");
+			const raw = evt.dataTransfer?.getData(DRAG_RECIPE_TYPE);
+			if (!raw) return;
+			let payload: PlannerDragPayload;
+			try {
+				payload = JSON.parse(raw) as PlannerDragPayload;
+			} catch {
+				return;
+			}
+			if (
+				typeof payload.day !== "string" ||
+				typeof payload.slot !== "string" ||
+				typeof payload.index !== "number"
+			) {
+				return;
+			}
+			void this.moveRecipe(
+				payload.day,
+				payload.slot,
+				payload.index,
+				targetDay,
+				targetSlot,
+			);
 		});
 	}
 
@@ -355,6 +426,26 @@ export class MealPlannerView extends ItemView {
 		index: number,
 	): Promise<void> {
 		this.grid.cells[day]?.[slot]?.splice(index, 1);
+		await this.persist();
+		this.render();
+	}
+
+	/** Move a planned recipe from one cell to another (drag-and-drop). */
+	private async moveRecipe(
+		fromDay: string,
+		fromSlot: string,
+		index: number,
+		toDay: string,
+		toSlot: string,
+	): Promise<void> {
+		if (fromDay === toDay && fromSlot === toSlot) return;
+		const source = this.grid.cells[fromDay]?.[fromSlot];
+		const target = this.grid.cells[toDay]?.[toSlot];
+		if (!source || !target) return;
+		if (index < 0 || index >= source.length) return;
+		const [file] = source.splice(index, 1);
+		if (!file) return;
+		target.push(file);
 		await this.persist();
 		this.render();
 	}

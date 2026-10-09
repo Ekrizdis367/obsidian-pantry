@@ -11,6 +11,7 @@ import {
 import {
 	activeMealDays,
 	activeMealSlots,
+	mealAliasesForSlot,
 	PantrySettings,
 } from "../settings";
 
@@ -162,13 +163,21 @@ function pickForSlot(
 			fm,
 			settings.autoFillStatusProperty,
 		);
-		if (status === null || !allowed.includes(status)) continue;
+		// Missing status is eligible (flat weight). Present status must be in
+		// the allowed list and is weighted so lower numbers are preferred.
+		let weight: number;
+		if (status === null) {
+			weight = 1;
+		} else if (!allowed.includes(status)) {
+			continue;
+		} else {
+			weight = maxStatus + 1 - status;
+			if (weight <= 0) continue;
+		}
 
 		const meals = readMealTags(fm, settings.autoFillMealProperty);
-		if (!mealMatchesSlot(meals, slot)) continue;
+		if (!mealMatchesSlot(meals, slot, settings)) continue;
 
-		const weight = maxStatus + 1 - status;
-		if (weight <= 0) continue;
 		candidates.push({ file: entry.file, weight });
 	}
 
@@ -216,17 +225,19 @@ function readMealTags(
 	return [];
 }
 
-/** When `meal` is absent, treat the recipe as eligible for any slot. */
-function mealMatchesSlot(meals: readonly string[], slot: string): boolean {
+/**
+ * When `meal` is absent, treat the recipe as eligible for any slot.
+ * Otherwise match against the configured aliases for this slot (#17).
+ */
+function mealMatchesSlot(
+	meals: readonly string[],
+	slot: string,
+	settings: PantrySettings,
+): boolean {
 	if (meals.length === 0) return true;
-	const slotLower = slot.trim().toLowerCase();
-	return meals.some((meal) => {
-		if (meal === slotLower) return true;
-		if (slotLower === "snacks" && (meal === "snack" || meal === "snacks")) {
-			return true;
-		}
-		return false;
-	});
+	const aliases = mealAliasesForSlot(settings, slot);
+	if (aliases.length === 0) return true;
+	return meals.some((meal) => aliases.includes(meal));
 }
 
 function weightedPick(candidates: readonly WeightedCandidate[]): TFile | null {
@@ -296,7 +307,7 @@ export function formatAutoFillNotice(result: AutoFillResult): string {
 	if (result.filled === 0) {
 		const hint =
 			result.skipped > 0
-				? " Check your status and meal frontmatter, or widen the allowed status values in settings."
+				? " Check meal frontmatter / slot aliases, or widen the allowed status values in settings (recipes with no status are eligible)."
 				: "";
 		return `No empty slots could be filled.${hint}`;
 	}

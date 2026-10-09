@@ -885,6 +885,23 @@ function mergeSettings(raw: Partial<PantrySettings> | null): PantrySettings {
 			raw.autoFillMealProperty.trim()
 				? raw.autoFillMealProperty.trim()
 				: base.autoFillMealProperty,
+		autoFillMealAliases: (() => {
+			const rawAliases = (
+				raw as { autoFillMealAliases?: unknown }
+			).autoFillMealAliases;
+			if (!rawAliases || typeof rawAliases !== "object") {
+				return { ...base.autoFillMealAliases };
+			}
+			const out: Record<string, string> = {};
+			for (const [key, value] of Object.entries(
+				rawAliases as Record<string, unknown>,
+			)) {
+				if (typeof value === "string" && value.trim()) {
+					out[key] = value.trim();
+				}
+			}
+			return out;
+		})(),
 		importFolder:
 			typeof raw.importFolder === "string"
 				? raw.importFolder.trim()
