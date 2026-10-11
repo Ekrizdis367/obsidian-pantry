@@ -8,7 +8,10 @@ import {
 	WorkspaceLeaf,
 	setIcon,
 } from "obsidian";
-import { groupForDisplay } from "../grocery/aggregator";
+import {
+	arrangeCheckedItems,
+	groupForDisplay,
+} from "../grocery/aggregator";
 import { GroceryListManager } from "../grocery/manager";
 import { InventoryManager } from "../grocery/inventory-manager";
 import { formatQuantity } from "../parser/quantity";
@@ -17,7 +20,7 @@ import {
 	matchingAllergens,
 	readAllergens,
 } from "../parser/recipe-meta";
-import { PantrySettings } from "../settings";
+import { CheckedItemDisplay, PantrySettings } from "../settings";
 import { GroceryItem, OneOffItem, InventoryItem } from "../types";
 import { toTitleCase } from "../utils/text";
 import {
@@ -115,6 +118,15 @@ export class GroceryListView extends ItemView {
 
 		this.makeIconButton(
 			actionsEl,
+			"list-checks",
+			"Checked items",
+			(evt) => {
+				this.openCheckedDisplayMenu(evt);
+			},
+		);
+
+		this.makeIconButton(
+			actionsEl,
 			"calendar-days",
 			"Import meal plan into shopping list",
 			() => {
@@ -176,6 +188,33 @@ export class GroceryListView extends ItemView {
 					}),
 			);
 		}
+		this.showHeaderMenu(menu, evt);
+	}
+
+	private openCheckedDisplayMenu(evt: MouseEvent | undefined): void {
+		const menu = new Menu();
+		const settings = this.deps.getSettings();
+		const options: Array<[CheckedItemDisplay, string]> = [
+			["inline", "Keep checked in place"],
+			["bottom", "Move checked to bottom"],
+			["hidden", "Hide checked items"],
+		];
+		for (const [value, label] of options) {
+			menu.addItem((item) =>
+				item
+					.setTitle(label)
+					.setChecked(settings.checkedItemDisplay === value)
+					.onClick(async () => {
+						settings.checkedItemDisplay = value;
+						await this.deps.saveSettings();
+						this.renderList();
+					}),
+			);
+		}
+		this.showHeaderMenu(menu, evt);
+	}
+
+	private showHeaderMenu(menu: Menu, evt: MouseEvent | undefined): void {
 		if (evt) {
 			menu.showAtMouseEvent(evt);
 		} else {
@@ -271,7 +310,11 @@ export class GroceryListView extends ItemView {
 		});
 
 		const ul = section.createEl("ul", { cls: "pantry-items" });
-		for (const item of groupItems) {
+		const displayItems = arrangeCheckedItems(
+			groupItems,
+			this.deps.getSettings().checkedItemDisplay,
+		);
+		for (const item of displayItems) {
 			this.renderItem(ul, item, oneOffs);
 		}
 	}

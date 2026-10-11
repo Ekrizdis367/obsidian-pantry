@@ -19,9 +19,9 @@ Recipe view with hero image, scaled ingredients, instructions, and portion multi
 - **Smart grouping.** Items are grouped by category (Produce, Dairy & Eggs, Pantry, ...) so the list matches the layout of your store. Switch to by-recipe or a flat list at any time.
 - **One-off items.** Add anything that isn't tied to a recipe (paper towels, snacks). One-offs live alongside recipe items and clear with the rest of the list. They are stored in a vault JSON file (`Pantry/shopping-state.json` by default) so they sync across devices with your notes — unlike plugin settings, which are device-local.
 - **Inventory.** Track what you already have (spices, staples, leftovers) in a dedicated inventory view. Toggle **In** when you have an item; matching grocery lines are omitted automatically (name-only match). Uncheck when you run out so the next recipe pulls it back onto the list. Complements `#IgnoreIngredient` for permanent per-recipe skips.
-- **Persistent checkboxes.** Tick items off as you shop. Your progress survives restarts and syncs across devices until you officially clear the list.
+- **Persistent checkboxes.** Tick items off as you shop. Your progress survives restarts and syncs across devices until you officially clear the list. Optionally move checked items to the bottom of each section or hide them (settings or the list-checks button on the grocery list).
 - **Collapsible sections.** Click any section header to collapse or expand it. Sections you finish shopping auto-collapse so the next aisle stays in view (toggleable in settings).
-- **Custom recipe view.** Notes flagged with a configurable type property (`type: recipe` by default, and wikilink values like `[[Recipes]]` are recognised) open in a dedicated view with a hero image, nutrition card, an instructions panel, meat-temperature warnings, and a portion multiplier that scales both the displayed quantities *and* the grocery list.
+- **Custom recipe view.** Notes flagged with a configurable type property (`type: recipe` by default, and wikilink values like `[[Recipes]]` are recognised) open in a dedicated view with a hero image, nutrition card, an instructions panel, meat-temperature warnings, and a portion multiplier that scales both the displayed quantities *and* the grocery list. Deeper headings under Ingredients/Instructions show as section labels; tap ingredients or steps to cross them off while cooking.
 - **Diet & cooking-time badges.** Add `diet`, `prepTime`, and `cookTime` to the frontmatter and the recipe view shows them as quick-glance badges below the title.
 - **No duplicate hero image.** When a recipe both embeds its photo inline and references it via `image` frontmatter, an optional setting hides the matching inline copy so the image appears only once.
 - **Allergen warnings.** Set your personal allergens in settings; recipes whose `allergens` frontmatter overlaps yours show a red banner in the recipe view and a warning icon next to the recipe in the grocery list.
@@ -64,7 +64,7 @@ Recipe view with hero image, scaled ingredients, instructions, and portion multi
 
 ## Recipe format
 
-The plugin looks for the configured **Ingredients heading** (any level) inside each selected recipe and parses every list item beneath it as an ingredient. If no matching heading is found, every list item in the file is parsed.
+The plugin looks for the configured **Ingredients heading** (any level) inside each selected recipe and parses every list item beneath it as an ingredient. If no matching heading is found, every list item in the file is parsed. Deeper headings under Ingredients or Instructions (for example `### Marinade`) become visual section labels in the recipe view; grocery consolidation still uses only the list items.
 
 Each ingredient line is interpreted as `[quantity] [unit] [name]`. Supported quantities include whole numbers, decimals, simple fractions (`1/2`), mixed fractions (`1 1/2`), and unicode fractions (`½`). Common units (cup, tbsp, tsp, oz, lb, g, kg, can, clove, bunch, ...) are recognised and normalised so plurals consolidate. Trailing parentheticals like `(diced)` or `(softened)` are stripped from the name before grocery-list consolidation, but the recipe view keeps them and shows them in italic after the ingredient name.
 
@@ -89,7 +89,7 @@ The tag is matched case-insensitively; `#ignoreingredient`, `#ignore-ingredient`
 
 Pantry ships a custom view for recipe notes. To opt a note in, add `type: recipe` to its frontmatter. Both the property name and the value it's matched against are configurable in **Settings → Recipe view** (set **Recipe type property** to `category`, `kind`, etc. if you don't use `type`). Matching is case-insensitive, and wikilink values such as `type: [[Recipes]]` are matched against the linked note's name — so the property picker's linked values work too. When auto-open is on (the default), freshly opening such a note switches the leaf into the recipe view automatically. Switching to another tab and back keeps whatever view that tab was already in (Markdown stays Markdown). Closing the note and opening it again runs auto-open once more. If frontmatter is not ready the instant the file opens, Pantry retries once Obsidian finishes parsing YAML. After that, Pantry briefly re-asserts the recipe view so Obsidian's own Markdown leaf update cannot overwrite it on warm opens. You can always switch with the **Edit as Markdown** button in the view's action bar, the **Recipe mode** entry in the pane's three-dot menu, or the **Open as Markdown** / **Open as recipe** commands.
 
-The view shows a meta banner with the multiplier, servings, and nutrition; a hero image card; a tabular ingredients list with safe-cooking-temperature badges next to detected meats; and a numbered instructions card. Trailing parentheticals on ingredient lines (e.g. `(softened)`) appear in italic after the ingredient name. The meta banner also includes a favorite star, **kids approved** thumbs-up / thumbs-down controls, and the add-to-grocery-list toggle.
+The view shows a meta banner with the multiplier, servings, and nutrition; a hero image card; a tabular ingredients list with safe-cooking-temperature badges next to detected meats; and a numbered instructions card. Trailing parentheticals on ingredient lines (e.g. `(softened)`) appear in italic after the ingredient name. The meta banner also includes a favorite star, **kids approved** thumbs-up / thumbs-down controls, and the add-to-grocery-list toggle. Tap an ingredient or step to strike it through while you cook (session-only — resets when you leave the recipe).
 
 If a recipe both embeds its photo inline and points to the same file via the `image` frontmatter, enable **Settings → Recipe view → Suppress duplicate inline image** to hide the first inline copy that matches the frontmatter image so it only renders once (off by default).
 
@@ -131,13 +131,17 @@ carbs: 96
 ---
 
 ## Ingredients
+### Pasta
 - 1 lb spaghetti
+### Sauce
 - 2 cups crushed tomatoes
 - 3 cloves garlic
 
 ## Instructions
+### Cook
 1. Boil water and salt heavily.
 2. Cook spaghetti to al dente.
+### Finish
 3. Toss with sauce and serve.
 ```
 

@@ -753,6 +753,12 @@ function mergeSettings(raw: Partial<PantrySettings> | null): PantrySettings {
 			raw.grouping === "none"
 				? raw.grouping
 				: base.grouping,
+		checkedItemDisplay:
+			raw.checkedItemDisplay === "inline" ||
+			raw.checkedItemDisplay === "bottom" ||
+			raw.checkedItemDisplay === "hidden"
+				? raw.checkedItemDisplay
+				: base.checkedItemDisplay,
 		categorySource:
 			raw.categorySource === "tag" ||
 			raw.categorySource === "tag-then-dictionary" ||

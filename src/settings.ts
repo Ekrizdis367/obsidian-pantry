@@ -24,6 +24,11 @@ export interface PantrySettings {
 	instructionsHeading: string;
 	/** How items should be grouped in the grocery list view. */
 	grouping: GroupingMode;
+	/**
+	 * How checked grocery items are arranged inside each section:
+	 * keep their sort position, move to the bottom, or hide them.
+	 */
+	checkedItemDisplay: CheckedItemDisplay;
 	/** Where each item's category comes from. */
 	categorySource: CategorySource;
 	/** Order of categories. Unknown categories appear at the end alphabetically. */
@@ -114,6 +119,9 @@ export interface PantrySettings {
 }
 
 export type NutritionDisplay = "per-serving" | "total";
+
+/** How checked items appear inside each grocery list section. */
+export type CheckedItemDisplay = "inline" | "bottom" | "hidden";
 
 export interface PantrySavedState {
 	/** One-off shopping items the user has added manually. */
@@ -290,6 +298,7 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 	ingredientsHeading: "Ingredients",
 	instructionsHeading: "Instructions",
 	grouping: "category",
+	checkedItemDisplay: "inline",
 	categorySource: "dictionary",
 	categoryOrder: [...DEFAULT_CATEGORY_ORDER],
 	categoryOverrides: [],

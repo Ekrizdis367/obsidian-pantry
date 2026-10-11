@@ -11,6 +11,8 @@ import { parseIngredientLine } from "../parser/ingredient";
 import { detectMeatTemp, MeatTemp } from "../parser/meat";
 import { formatQuantity } from "../parser/quantity";
 import {
+	IngredientSegment,
+	InstructionBlock,
 	splitBodyAroundIngredients,
 	splitBodyAroundInstructions,
 	stripFrontmatter,
@@ -89,6 +91,13 @@ const SERVINGS_KEYS = [
  * quantities, and anything after.
  */
 export class RecipeView extends TextFileView {
+	/** Session cook progress: struck-through ingredient keys for the open file. */
+	private cookDoneIngredients = new Set<string>();
+	/** Session cook progress: struck-through step keys for the open file. */
+	private cookDoneSteps = new Set<string>();
+	/** Path the cook Sets apply to; cleared when the leaf switches recipes. */
+	private cookFilePath: string | null = null;
+
 	constructor(
 		leaf: WorkspaceLeaf,
 		private readonly deps: RecipeViewDeps,
@@ -142,6 +151,8 @@ export class RecipeView extends TextFileView {
 
 		const file = this.file;
 		if (!file) return;
+
+		this.ensureCookStateForFile(file.path);
 
 		const settings = this.deps.getSettings();
 		const cache = this.app.metadataCache.getFileCache(file);
@@ -210,7 +221,7 @@ export class RecipeView extends TextFileView {
 		if (split.ingredientLines.length > 0) {
 			this.renderIngredients(
 				ingredientsCol,
-				split.ingredientLines,
+				split.segments,
 				multiplier,
 				settings,
 			);
@@ -224,6 +235,14 @@ export class RecipeView extends TextFileView {
 			file.path,
 			settings.instructionsHeading,
 		);
+	}
+
+	/** Reset cook progress when the leaf opens a different recipe. */
+	private ensureCookStateForFile(path: string): void {
+		if (this.cookFilePath === path) return;
+		this.cookFilePath = path;
+		this.cookDoneIngredients.clear();
+		this.cookDoneSteps.clear();
 	}
 
 	private renderAfterIngredients(
@@ -250,7 +269,7 @@ export class RecipeView extends TextFileView {
 
 		this.renderInstructions(
 			root,
-			split.steps,
+			split.blocks,
 			sourcePath,
 			instructionsHeading,
 		);
@@ -262,7 +281,7 @@ export class RecipeView extends TextFileView {
 
 	private renderInstructions(
 		root: HTMLElement,
-		steps: string[],
+		blocks: InstructionBlock[],
 		sourcePath: string,
 		title: string,
 	): void {
@@ -286,19 +305,46 @@ export class RecipeView extends TextFileView {
 			cls: "pantry-recipe-instruction-list",
 		});
 
-		for (let i = 0; i < steps.length; i++) {
-			const step = steps[i] ?? "";
+		let stepNumber = 0;
+		for (const block of blocks) {
+			if (block.kind === "subheading") {
+				list.createEl("li", {
+					cls: "pantry-recipe-section-heading",
+					text: block.title,
+				});
+				continue;
+			}
+
+			stepNumber += 1;
+			const step = block.text;
+			const cookKey = cookProgressKey("step", stepNumber, step);
 			const li = list.createEl("li", {
 				cls: "pantry-recipe-instruction",
 			});
+			if (this.cookDoneSteps.has(cookKey)) {
+				li.addClass("is-done");
+			}
+			li.setAttribute("role", "button");
+			li.setAttribute("tabindex", "0");
+			li.setAttribute(
+				"aria-pressed",
+				this.cookDoneSteps.has(cookKey) ? "true" : "false",
+			);
+			li.setAttribute(
+				"aria-label",
+				`Step ${stepNumber}. Tap to mark complete.`,
+			);
 			li.createDiv({
 				cls: "pantry-recipe-instruction-number",
-				text: String(i + 1),
+				text: String(stepNumber),
 			});
 			const body = li.createDiv({
 				cls: "pantry-recipe-instruction-body",
 			});
 			void MarkdownRenderer.render(this.app, step, body, sourcePath, this);
+			this.bindCookToggle(li, () => {
+				this.toggleCookDone(this.cookDoneSteps, cookKey, li);
+			});
 		}
 	}
 
@@ -846,7 +892,7 @@ export class RecipeView extends TextFileView {
 
 	private renderIngredients(
 		root: HTMLElement,
-		ingredientLines: string[],
+		segments: IngredientSegment[],
 		multiplier: number,
 		settings: PantrySettings,
 	): void {
@@ -874,12 +920,37 @@ export class RecipeView extends TextFileView {
 			? parseGiDictionary(settings.giDictionary)
 			: [];
 
-		for (const raw of ingredientLines) {
+		let itemIndex = 0;
+		for (const segment of segments) {
+			if (segment.kind === "subheading") {
+				ul.createEl("li", {
+					cls: "pantry-recipe-section-heading",
+					text: segment.title,
+				});
+				continue;
+			}
+
+			const raw = segment.line;
 			const parsed = parseIngredientLine(raw);
 			if (!parsed) continue;
+			itemIndex += 1;
+			const cookKey = cookProgressKey("ingredient", itemIndex, raw);
 			const li = ul.createEl("li", {
 				cls: "pantry-recipe-ingredient",
 			});
+			if (this.cookDoneIngredients.has(cookKey)) {
+				li.addClass("is-done");
+			}
+			li.setAttribute("role", "button");
+			li.setAttribute("tabindex", "0");
+			li.setAttribute(
+				"aria-pressed",
+				this.cookDoneIngredients.has(cookKey) ? "true" : "false",
+			);
+			li.setAttribute(
+				"aria-label",
+				`${titleCase(parsed.name)}. Tap to mark used.`,
+			);
 
 			const scaledQty =
 				parsed.quantity === null
@@ -918,6 +989,39 @@ export class RecipeView extends TextFileView {
 			if (settings.diabeticMode && isHighGi(parsed.name, giDictionary)) {
 				this.renderHighGiBadge(li);
 			}
+
+			this.bindCookToggle(li, () => {
+				this.toggleCookDone(this.cookDoneIngredients, cookKey, li);
+			});
+		}
+	}
+
+	private bindCookToggle(el: HTMLElement, toggle: () => void): void {
+		el.addEventListener("click", (evt) => {
+			const target = evt.target as HTMLElement | null;
+			if (target?.closest("a, button, input, textarea")) return;
+			toggle();
+		});
+		el.addEventListener("keydown", (evt) => {
+			if (evt.key !== "Enter" && evt.key !== " ") return;
+			evt.preventDefault();
+			toggle();
+		});
+	}
+
+	private toggleCookDone(
+		store: Set<string>,
+		key: string,
+		el: HTMLElement,
+	): void {
+		if (store.has(key)) {
+			store.delete(key);
+			el.removeClass("is-done");
+			el.setAttribute("aria-pressed", "false");
+		} else {
+			store.add(key);
+			el.addClass("is-done");
+			el.setAttribute("aria-pressed", "true");
 		}
 	}
 
@@ -976,6 +1080,15 @@ export class RecipeView extends TextFileView {
 
 const IMAGE_KEYS = [RECIPE_FRONTMATTER.image] as const;
 const IMAGE_EMBED_PATTERN = /!\[\[([^\]]+)\]\]|!\[[^\]]*\]\(([^)]*)\)/g;
+
+/** Stable-enough session key for cook-mode toggles (index + raw text). */
+function cookProgressKey(
+	kind: "ingredient" | "step",
+	index: number,
+	raw: string,
+): string {
+	return `${kind}:${index}:${raw.trim().toLowerCase()}`;
+}
 
 function extractImageTarget(value: string): string | null {
 	const trimmed = value.trim();

@@ -81,6 +81,12 @@ export class PantrySettingsTab extends PluginSettingTab {
 						render: (setting) => this.wireGrouping(setting),
 					},
 					{
+						name: "Checked items",
+						desc: "How checked-off items appear inside each grocery list section. Also available from the list-checks button on the grocery list.",
+						render: (setting) =>
+							this.wireCheckedItemDisplay(setting),
+					},
+					{
 						name: "Auto-collapse completed sections",
 						desc: "Collapse a section automatically once every item in it is checked off.",
 						render: (setting) =>
@@ -362,6 +368,24 @@ export class PantrySettingsTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.host.settings.grouping =
 						value as PantrySettings["grouping"];
+					await this.host.saveSettings();
+					this.host.manager.trigger("changed");
+				}),
+		);
+	}
+
+	private wireCheckedItemDisplay(setting: Setting): void {
+		setting.addDropdown((dd) =>
+			dd
+				.addOptions({
+					inline: "Keep in place",
+					bottom: "Move to bottom",
+					hidden: "Hide checked",
+				})
+				.setValue(this.host.settings.checkedItemDisplay)
+				.onChange(async (value) => {
+					this.host.settings.checkedItemDisplay =
+						value as PantrySettings["checkedItemDisplay"];
 					await this.host.saveSettings();
 					this.host.manager.trigger("changed");
 				}),
