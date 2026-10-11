@@ -10,6 +10,17 @@ export function toTitleCase(name: string): string {
 	);
 }
 
+/**
+ * Decode HTML entities (`&quot;`, `&amp;`, `&#39;`) left inside JSON-LD
+ * text fields by recipe sites. Uses the browser's native HTML parser; unknown
+ * entities pass through unchanged. Any real markup tags are dropped by
+ * `textContent`, which is what we want for note text.
+ */
+export function decodeHtmlEntities(text: string): string {
+	return new DOMParser().parseFromString(text, "text/html").documentElement
+		.textContent ?? text;
+}
+
 /** Captured regex group as a string (empty when the group is missing). */
 export function regexCapture(match: RegExpMatchArray, index: number): string {
 	const value = match[index];
