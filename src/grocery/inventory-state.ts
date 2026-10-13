@@ -3,7 +3,7 @@ import {
 	DEFAULT_INVENTORY_STATE_PATH,
 	PantrySavedInventoryState,
 } from "../settings";
-import { InventoryItem, ShopLink } from "../types";
+import { InventoryItem, InventorySection, ShopLink } from "../types";
 
 export { DEFAULT_INVENTORY_STATE_PATH };
 
@@ -173,28 +173,67 @@ export function resolveInventoryStatePath(path: string): string {
 
 // ============================================================================
 // Legacy migration (pre-file-based inventory) — v1.x stored items directly
-// in this JSON file. Used once at startup to seed the first inventory page.
+// in this JSON file. Imported into an inventory page at startup, then
+// archived and cleared from the JSON.
 // ============================================================================
 
+export interface LegacyInventory {
+	items: InventoryItem[];
+	/** Original file content, kept verbatim for the backup written after migration. */
+	raw: string;
+}
+
 /**
- * Read the `items` array out of a legacy (v1.x) inventory-state JSON file, if
- * present. Returns an empty array for current-shape files (no `items` key)
- * or when the file is missing/unparseable.
+ * Read leftover `items` out of a legacy (v1.x) inventory-state JSON file.
+ * Returns null for current-shape files (no usable `items`) or when the file
+ * is missing/unparseable.
  */
-export async function readLegacyInventoryItems(
+export async function readLegacyInventory(
 	app: App,
 	path: string,
-): Promise<InventoryItem[]> {
+): Promise<LegacyInventory | null> {
 	const resolved = resolveInventoryStatePath(path);
 	const file = app.vault.getAbstractFileByPath(resolved);
-	if (!(file instanceof TFile)) return [];
+	if (!(file instanceof TFile)) return null;
 	try {
-		const raw = await app.vault.cachedRead(file);
+		const raw = await app.vault.read(file);
 		const data = JSON.parse(raw.trim() || "{}") as { items?: unknown };
-		return normalizeInventoryItems(data.items);
+		const items = normalizeInventoryItems(data.items);
+		return items.length > 0 ? { items, raw } : null;
 	} catch {
-		return [];
+		return null;
 	}
+}
+
+/** Sibling path the original legacy JSON is archived to after a successful import. */
+export function legacyInventoryBackupPath(statePath: string): string {
+	return resolveInventoryStatePath(statePath).replace(/(\.json)?$/i, ".legacy-backup.json");
+}
+
+/**
+ * Group legacy items into page sections by their old `category` (falling
+ * back to "Items"), skipping any id already present in an inventory page so
+ * a re-run (e.g. a second synced device) never duplicates items.
+ */
+export function buildLegacyMigrationSections(
+	items: InventoryItem[],
+	existingIds: ReadonlySet<string>,
+): InventorySection[] {
+	const bySection = new Map<string, InventoryItem[]>();
+	for (const item of items) {
+		if (existingIds.has(item.id)) continue;
+		const key = item.category?.trim() || "Items";
+		const migrated: InventoryItem = { ...item, category: null };
+		const arr = bySection.get(key);
+		if (arr) arr.push(migrated);
+		else bySection.set(key, [migrated]);
+	}
+	return [...bySection.entries()].map(([name, sectionItems]) => ({
+		name,
+		tags: [],
+		items: sectionItems,
+		extraLines: [],
+	}));
 }
 
 /** Normalize a raw (legacy) items array into well-formed {@link InventoryItem}s. */
@@ -206,11 +245,9 @@ export function normalizeInventoryItems(raw: unknown): InventoryItem[] {
 			const obj = item as Record<string, unknown>;
 			const id = typeof obj.id === "string" ? obj.id : null;
 			if (!id) return null;
-			// Legacy shapes had either a boolean `inStock` flag or nothing at all
-			// (pre-quantity model). Best-effort carry the signal forward: "in
-			// stock" becomes a nominal quantity of 1, unset/false becomes 0.
-			// Neither legacy shape tracked a desired amount, so that's untracked
-			// (0) until the user sets a target in the new stepper UI.
+			// Legacy items had a boolean `inStock` flag (missing meant in stock,
+			// as in 1.3.x). In stock becomes a nominal quantity of 1, false
+			// becomes 0. No desired amount was tracked, so want starts at 0.
 			const quantity =
 				typeof obj.quantity === "number" && Number.isFinite(obj.quantity)
 					? obj.quantity

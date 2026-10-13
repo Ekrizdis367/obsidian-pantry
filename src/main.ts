@@ -28,8 +28,11 @@ import {
 	inventoryStateHasContent,
 	mergeInventoryState,
 	parseInventoryState,
+	buildLegacyMigrationSections,
+	LegacyInventory,
+	legacyInventoryBackupPath,
 	readInventoryStateFile,
-	readLegacyInventoryItems,
+	readLegacyInventory,
 	resolveInventoryStatePath,
 	serializeInventoryState,
 	writeInventoryStateFile,
@@ -37,7 +40,7 @@ import {
 import { serializeInventoryBody } from "./parser/inventory";
 import { inventoryTypeMatches } from "./grocery/inventory-library";
 import { recipeTypeMatches } from "./parser/recipe";
-import { InventoryItem, InventorySection } from "./types";
+import { InventorySection } from "./types";
 import {
 	DEFAULT_CATEGORY_ORDER,
 	DEFAULT_MEAL_PLAN_SLOT_SELECTION,
@@ -85,10 +88,17 @@ export default class PantryPlugin extends Plugin {
 	 * vault modify events so a self-write does not trigger a redundant reload.
 	 */
 	private inventoryStateWriteToken: string | null = null;
+	/** Leftover pre-file-based items awaiting import; state-file writes are held until it's cleared. */
+	private pendingLegacyInventory: LegacyInventory | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
 		await this.loadShoppingState();
+		// Before anything can rewrite the state file (which would drop `items`).
+		this.pendingLegacyInventory = await readLegacyInventory(
+			this.app,
+			this.settings.inventoryStatePath,
+		);
 		await this.loadInventoryState();
 
 		const sink: SaveSink = makeSaveSink(this);
@@ -253,7 +263,6 @@ export default class PantryPlugin extends Plugin {
 		);
 
 		await this.inventoryManager.refresh();
-		await this.migrateLegacyInventory();
 
 		const refresh = debounce(
 			() => {
@@ -347,7 +356,8 @@ export default class PantryPlugin extends Plugin {
 
 		this.app.workspace.onLayoutReady(() => {
 			void this.manager.refresh();
-			void this.inventoryManager.refresh();
+			if (this.pendingLegacyInventory) void this.migrateLegacyInventory();
+			else void this.inventoryManager.refresh();
 		});
 	}
 
@@ -475,6 +485,7 @@ export default class PantryPlugin extends Plugin {
 
 	/** Write the in-memory inventory state to its vault JSON file. */
 	async saveInventoryState(): Promise<void> {
+		if (this.pendingLegacyInventory) return;
 		const path = resolveInventoryStatePath(
 			this.settings.inventoryStatePath,
 		);
@@ -519,23 +530,49 @@ export default class PantryPlugin extends Plugin {
 	}
 
 	/**
-	 * One-time migration for installs upgrading from the pre-file-based
-	 * inventory (a flat item list in a vault JSON file). Runs only when no
-	 * inventory pages have been found yet, so it's safe to call on every
-	 * startup — once the migrated page exists, this is a no-op forever after
-	 * (even
-	 * across devices, since the check is "do any pages already exist?"
-	 * rather than a one-shot flag).
+	 * Imports leftover `items` from a pre-file-based inventory-state JSON into
+	 * a new inventory page, then archives the original JSON and rewrites it
+	 * without `items`. Items whose id already lives in a page are skipped, so
+	 * re-running (another synced device, a retry after a failed clear) never
+	 * duplicates anything.
 	 */
 	private async migrateLegacyInventory(): Promise<void> {
-		if (this.inventoryManager.getPages().length > 0) return;
+		const legacy = this.pendingLegacyInventory;
+		if (!legacy) return;
+		try {
+			await this.inventoryManager.refresh();
+			const existingIds = new Set(
+				this.inventoryManager.getEntries().map((e) => e.item.id),
+			);
+			const sections = buildLegacyMigrationSections(legacy.items, existingIds);
+			const importedCount = sections.reduce((n, s) => n + s.items.length, 0);
+			const createdPath =
+				sections.length > 0 ? await this.createMigratedInventoryPage(sections) : null;
 
-		const legacyItems = await readLegacyInventoryItems(
-			this.app,
-			resolveInventoryStatePath(this.settings.inventoryStatePath),
-		);
-		if (legacyItems.length === 0) return;
+			const statePath = resolveInventoryStatePath(this.settings.inventoryStatePath);
+			const backupPath = legacyInventoryBackupPath(statePath);
+			if (!this.app.vault.getAbstractFileByPath(backupPath)) {
+				await this.app.vault.create(backupPath, legacy.raw);
+			}
+			this.pendingLegacyInventory = null;
+			await this.saveInventoryState();
 
+			if (createdPath) {
+				new Notice(
+					`Pantry: imported ${importedCount} inventory item(s) into "${createdPath}". The old list was backed up to "${backupPath}".`,
+				);
+			}
+		} catch (e) {
+			// Leave pendingLegacyInventory set so state writes stay held and the next launch retries.
+			console.error("pantry: legacy inventory migration failed", e);
+			new Notice(
+				"Pantry: couldn't import your old inventory list. It's been left untouched in the inventory state file.",
+			);
+		}
+	}
+
+	/** Writes a new inventory page holding `sections`, returning its vault path. */
+	private async createMigratedInventoryPage(sections: InventorySection[]): Promise<string> {
 		const folder = this.settings.inventoryFolders[0]?.trim() || "Pantry";
 		if (!(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) {
 			try {
@@ -544,18 +581,6 @@ export default class PantryPlugin extends Plugin {
 				// Folder may already exist as a race with another process; ignore.
 			}
 		}
-
-		const bySection = new Map<string, InventoryItem[]>();
-		for (const item of legacyItems) {
-			const key = item.category?.trim() || "Items";
-			const migrated: InventoryItem = { ...item, category: null };
-			const arr = bySection.get(key);
-			if (arr) arr.push(migrated);
-			else bySection.set(key, [migrated]);
-		}
-		const sections: InventorySection[] = [...bySection.entries()].map(
-			([name, items]) => ({ name, tags: [], items, extraLines: [] }),
-		);
 
 		const property = this.settings.inventoryTypeProperty.trim() || "type";
 		const value = this.settings.inventoryTypeValue.trim() || "inventory";
@@ -568,16 +593,8 @@ export default class PantryPlugin extends Plugin {
 			n++;
 		}
 		await this.app.vault.create(path, content);
-
-		if (this.settings.inventoryFolders.length === 0) {
-			this.settings.inventoryFolders = [folder];
-		}
-		await this.saveSettings();
 		await this.inventoryManager.refresh();
-
-		new Notice(
-			`Pantry: migrated ${legacyItems.length} inventory item(s) into "${path}". Open the Inventory tab to organize them into sections.`,
-		);
+		return path;
 	}
 
 	async activateView(): Promise<void> {

@@ -94,7 +94,7 @@ export class PantrySettingsTab extends PluginSettingTab {
 					},
 					{
 						name: "Exclude in-stock from grocery list",
-						desc: "Omit grocery lines that match an inventory item marked in stock (name-only match). Uncheck an inventory item when you run out so it comes back onto the list. Complements #IgnoreIngredient for permanent per-recipe skips.",
+						desc: "Omit grocery lines that match an inventory item with a have quantity above zero (name-only match). When the quantity drops to zero, the item comes back onto the list. Complements #IgnoreIngredient for permanent per-recipe skips.",
 						render: (setting) =>
 							this.wireExcludeInStockFromGrocery(setting),
 					},

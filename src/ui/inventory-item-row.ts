@@ -265,13 +265,8 @@ function onRowKeydown(ctx: RowContext, evt: KeyboardEvent, row: HTMLElement, ent
 			evt.preventDefault();
 			cancelHoverCard(ctx);
 			const delta = evt.key === "ArrowRight" ? 1 : -1;
-			if (evt.shiftKey) {
-				const next = Math.max(0, (entry.item.desiredQuantity || 0) + delta);
-				void ctx.manager.updateItem(entry.filePath, entry.item.id, { desiredQuantity: next });
-			} else {
-				const next = Math.max(0, (entry.item.quantity || 0) + delta);
-				void ctx.manager.updateItem(entry.filePath, entry.item.id, { quantity: next });
-			}
+			const field = evt.shiftKey ? "desiredQuantity" : "quantity";
+			void ctx.manager.adjustItemQuantity(entry.filePath, entry.item.id, field, delta);
 			break;
 		}
 	}
@@ -292,15 +287,18 @@ export function renderQtyStepper(ctx: RowContext, container: HTMLElement, entry:
 		ctx.focus.key = rowKey(entry);
 		void ctx.manager.updateItem(entry.filePath, item.id, updates);
 	};
+	const nudge = (delta: number) => {
+		cancelHoverCard(ctx);
+		ctx.focus.key = rowKey(entry);
+		void ctx.manager.adjustItemQuantity(entry.filePath, item.id, "quantity", delta);
+	};
 
 	const minus = stepper.createEl("button", {
 		cls: "clickable-icon",
 		attr: { title: "Decrease quantity on hand" },
 	});
 	setIcon(minus, "minus");
-	minus.addEventListener("click", () =>
-		commit({ quantity: Math.max(0, (item.quantity || 0) - 1) }),
-	);
+	minus.addEventListener("click", () => nudge(-1));
 
 	const haveInput = stepper.createEl("input", {
 		cls: "pantry-qty-have",
@@ -317,7 +315,7 @@ export function renderQtyStepper(ctx: RowContext, container: HTMLElement, entry:
 		attr: { title: "Increase quantity on hand" },
 	});
 	setIcon(plus, "plus");
-	plus.addEventListener("click", () => commit({ quantity: (item.quantity || 0) + 1 }));
+	plus.addEventListener("click", () => nudge(1));
 
 	stepper.createSpan({ cls: "pantry-qty-sep", text: "/" });
 

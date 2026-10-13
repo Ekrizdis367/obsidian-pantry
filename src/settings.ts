@@ -102,9 +102,9 @@ export interface PantrySettings {
 	 */
 	inventoryStatePath: string;
 	/**
-	 * When true, grocery list lines whose name matches an in-stock inventory
-	 * item are omitted (name-only match, units ignored). Empty inventory or
-	 * items marked out of stock still appear on the list.
+	 * When true, grocery list lines whose name matches an inventory item with
+	 * a have quantity above zero are omitted (name-only match, units ignored).
+	 * Items at zero still appear on the list.
 	 */
 	excludeInStockFromGrocery: boolean;
 	/**

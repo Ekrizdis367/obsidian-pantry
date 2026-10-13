@@ -214,3 +214,32 @@ export function replaceInventoryBody(content: string, page: InventoryPageContent
 	const { fm } = splitFrontmatter(content);
 	return `${fm}${serializeInventoryBody(page)}`;
 }
+
+/**
+ * Items typed by hand (no hidden id comment) get a fresh random id on every
+ * parse. Re-use the id `previous` assigned to the same item (matched by
+ * section + name) so ids held by the UI stay valid across a re-parse.
+ */
+export function adoptItemIds(fresh: InventoryPageContent, previous: InventoryPageContent): void {
+	const freshIds = new Set(fresh.sections.flatMap((s) => s.items.map((i) => i.id)));
+	const previousIds = new Set<string>();
+	const pool = new Map<string, string[]>();
+	for (const section of previous.sections) {
+		for (const item of section.items) {
+			previousIds.add(item.id);
+			if (freshIds.has(item.id)) continue;
+			const key = `${section.name}\u0000${item.name.toLowerCase()}`;
+			const ids = pool.get(key);
+			if (ids) ids.push(item.id);
+			else pool.set(key, [item.id]);
+		}
+	}
+	if (pool.size === 0) return;
+	for (const section of fresh.sections) {
+		for (const item of section.items) {
+			if (previousIds.has(item.id)) continue;
+			const adopted = pool.get(`${section.name}\u0000${item.name.toLowerCase()}`)?.shift();
+			if (adopted) item.id = adopted;
+		}
+	}
+}

@@ -16,6 +16,7 @@ export default defineConfig(
 		"package-lock.json",
 		"tsconfig.json",
 		"scripts/**",
+		".test-build",
 	]),
 	{
 		languageOptions: {
@@ -32,6 +33,14 @@ export default defineConfig(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	// Tests run under Node's built-in runner, not inside Obsidian.
+	{
+		files: ["tests/**/*.ts"],
+		rules: {
+			"import/no-nodejs-modules": "off",
+			"@typescript-eslint/no-floating-promises": "off",
+		},
+	},
 	// Recommended attaches validate-manifest to JS/TS globs only; lint the
 	// real manifest.json explicitly so portal/dashboard checks run locally.
 	{

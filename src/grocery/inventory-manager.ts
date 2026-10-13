@@ -1,6 +1,7 @@
 import { App, Events, TFile, TFolder } from "obsidian";
 import { createInventoryPageContent, listInventoryFiles, readInventoryPage } from "./inventory-library";
 import {
+	adoptItemIds,
 	parseInventoryBody,
 	replaceInventoryBody,
 	splitFrontmatter,
@@ -17,11 +18,6 @@ export interface InventorySaveSink {
 interface PageCacheEntry {
 	file: TFile;
 	page: InventoryPageContent;
-}
-
-/** Deep-clone a page's parsed content so mutations don't corrupt the cache on failed writes. */
-function clonePage(page: InventoryPageContent): InventoryPageContent {
-	return JSON.parse(JSON.stringify(page)) as InventoryPageContent;
 }
 
 /** Effective tags for an item: its own tags plus the tags of the section it lives in. */
@@ -44,6 +40,8 @@ export function sectionKey(filePath: string, sectionName: string): string {
 export class InventoryManager extends Events {
 	private pages = new Map<string, PageCacheEntry>();
 	private refreshPromise: Promise<void> | null = null;
+	/** Tail of each file's pending mutation chain, so writes to one page never overlap. */
+	private writeQueues = new Map<string, Promise<void>>();
 
 	constructor(
 		private readonly app: App,
@@ -287,6 +285,8 @@ export class InventoryManager extends Events {
 		const next = new Map<string, PageCacheEntry>();
 		for (const file of files) {
 			const page = await readInventoryPage(this.app, file);
+			const previous = this.pages.get(file.path)?.page;
+			if (previous) adoptItemIds(page, previous);
 			next.set(file.path, { file, page });
 		}
 		this.pages = next;
@@ -294,15 +294,56 @@ export class InventoryManager extends Events {
 	}
 
 	// ------------------------------------------------------------------
-	// Mutations — each writes straight to the owning markdown file via
-	// `vault.process`, which reads the file fresh and preserves anything
-	// outside the body we don't own (namely frontmatter).
+	// Mutations — each is queued per file and applied inside `vault.process`
+	// to a fresh parse of the file's current body, so rapid edits (stepper
+	// clicks, arrow keys) and external edits never clobber one another.
 	// ------------------------------------------------------------------
 
-	private async writePage(file: TFile, page: InventoryPageContent): Promise<void> {
-		await this.app.vault.process(file, (data) => replaceInventoryBody(data, page));
-		this.pages.set(file.path, { file, page });
-		this.trigger("changed");
+	/** Run `task` after every earlier queued task for the same file has settled. */
+	private enqueue<T>(filePath: string, task: () => Promise<T>): Promise<T> {
+		const prev = this.writeQueues.get(filePath) ?? Promise.resolve();
+		const result = prev.then(task, task);
+		const tail = result.then(
+			() => undefined,
+			() => undefined,
+		);
+		this.writeQueues.set(filePath, tail);
+		void tail.then(() => {
+			if (this.writeQueues.get(filePath) === tail) this.writeQueues.delete(filePath);
+		});
+		return result;
+	}
+
+	/** Parse a file body, keeping cached ids for items whose line has no hidden id yet. */
+	private parseFresh(filePath: string, data: string): InventoryPageContent {
+		const page = parseInventoryBody(splitFrontmatter(data).body);
+		const cached = this.pages.get(filePath)?.page;
+		if (cached) adoptItemIds(page, cached);
+		return page;
+	}
+
+	/**
+	 * Apply `mutate` to the latest on-disk content of a page and write it
+	 * back. `mutate` returns false to signal "nothing to change".
+	 */
+	private mutatePage(
+		filePath: string,
+		mutate: (page: InventoryPageContent) => boolean,
+	): Promise<boolean> {
+		return this.enqueue(filePath, async () => {
+			const { file } = this.requirePage(filePath);
+			let next: InventoryPageContent | null = null;
+			await this.app.vault.process(file, (data) => {
+				const page = this.parseFresh(filePath, data);
+				if (!mutate(page)) return data;
+				next = page;
+				return replaceInventoryBody(data, page);
+			});
+			if (!next) return false;
+			this.pages.set(file.path, { file, page: next });
+			this.trigger("changed");
+			return true;
+		});
 	}
 
 	private requirePage(filePath: string): PageCacheEntry {
@@ -313,11 +354,10 @@ export class InventoryManager extends Events {
 
 	/** Add a new item to `sectionName` on the given page, creating the section if needed. */
 	async addItem(filePath: string, sectionName: string, item: InventoryItem): Promise<void> {
-		const entry = this.requirePage(filePath);
-		const page = clonePage(entry.page);
-		const section = findOrCreateSection(page, sectionName);
-		section.items.push(item);
-		await this.writePage(entry.file, page);
+		await this.mutatePage(filePath, (page) => {
+			findOrCreateSection(page, sectionName).items.push(item);
+			return true;
+		});
 	}
 
 	/** Update an item's fields by id, wherever it lives on the given page. */
@@ -326,47 +366,42 @@ export class InventoryManager extends Events {
 		itemId: string,
 		updates: Partial<InventoryItem>,
 	): Promise<void> {
-		const entry = this.requirePage(filePath);
-		const page = clonePage(entry.page);
-		for (const section of page.sections) {
-			const item = section.items.find((i) => i.id === itemId);
-			if (item) {
-				Object.assign(item, updates);
-				await this.writePage(entry.file, page);
-				return;
-			}
-		}
+		await this.mutatePage(filePath, (page) => {
+			const item = findItem(page, itemId);
+			if (!item) return false;
+			Object.assign(item, updates);
+			return true;
+		});
+	}
+
+	/** Nudge have/want by `delta` relative to the file's current value (clamped at 0). */
+	async adjustItemQuantity(
+		filePath: string,
+		itemId: string,
+		field: "quantity" | "desiredQuantity",
+		delta: number,
+	): Promise<void> {
+		await this.mutatePage(filePath, (page) => {
+			const item = findItem(page, itemId);
+			if (!item) return false;
+			item[field] = Math.max(0, (item[field] || 0) + delta);
+			return true;
+		});
 	}
 
 	/** Remove an item by id from the given page. */
 	async removeItem(filePath: string, itemId: string): Promise<void> {
-		const entry = this.requirePage(filePath);
-		const page = clonePage(entry.page);
-		let changed = false;
-		for (const section of page.sections) {
-			const before = section.items.length;
-			section.items = section.items.filter((i) => i.id !== itemId);
-			if (section.items.length !== before) changed = true;
-		}
-		if (changed) await this.writePage(entry.file, page);
+		await this.mutatePage(filePath, (page) => takeItem(page, itemId) !== null);
 	}
 
 	/** Move an item to a different section on the same page, creating it if needed. */
 	async moveItem(filePath: string, itemId: string, targetSectionName: string): Promise<void> {
-		const entry = this.requirePage(filePath);
-		const page = clonePage(entry.page);
-		let moved: InventoryItem | null = null;
-		for (const section of page.sections) {
-			const idx = section.items.findIndex((i) => i.id === itemId);
-			if (idx !== -1) {
-				moved = section.items.splice(idx, 1)[0] ?? null;
-				break;
-			}
-		}
-		if (!moved) return;
-		const target = findOrCreateSection(page, targetSectionName);
-		target.items.push(moved);
-		await this.writePage(entry.file, page);
+		await this.mutatePage(filePath, (page) => {
+			const moved = takeItem(page, itemId);
+			if (!moved) return false;
+			findOrCreateSection(page, targetSectionName).items.push(moved);
+			return true;
+		});
 	}
 
 	/** Move an item to a section on a different page, creating the section if needed. */
@@ -380,42 +415,29 @@ export class InventoryManager extends Events {
 			await this.moveItem(sourceFilePath, itemId, targetSectionName);
 			return;
 		}
-		const sourceEntry = this.requirePage(sourceFilePath);
-		const targetEntry = this.requirePage(targetFilePath);
-		const sourcePage = clonePage(sourceEntry.page);
-		let moved: InventoryItem | null = null;
-		for (const section of sourcePage.sections) {
-			const item = section.items.find((i) => i.id === itemId);
-			if (item) {
-				moved = item;
-				break;
-			}
-		}
+		const sourceFile = this.requirePage(sourceFilePath).file;
+		this.requirePage(targetFilePath);
+		const moved = await this.enqueue(sourceFilePath, async () =>
+			findItem(this.parseFresh(sourceFilePath, await this.app.vault.read(sourceFile)), itemId),
+		);
 		if (!moved) return;
 
-		const targetPage = clonePage(targetEntry.page);
-		findOrCreateSection(targetPage, targetSectionName).items.push(moved);
 		// Write the target before removing from the source so a failure here never loses the item.
-		await this.writePage(targetEntry.file, targetPage);
-
-		for (const section of sourcePage.sections) {
-			const idx = section.items.findIndex((i) => i.id === itemId);
-			if (idx !== -1) {
-				section.items.splice(idx, 1);
-				break;
-			}
-		}
-		await this.writePage(sourceEntry.file, sourcePage);
+		await this.mutatePage(targetFilePath, (page) => {
+			findOrCreateSection(page, targetSectionName).items.push({ ...moved });
+			return true;
+		});
+		await this.mutatePage(sourceFilePath, (page) => takeItem(page, itemId) !== null);
 	}
 
 	/** Add a new section to a page. No-ops if a section with that name already exists. */
 	async addSection(filePath: string, name: string, tags: string[]): Promise<void> {
-		const entry = this.requirePage(filePath);
-		const page = clonePage(entry.page);
 		const trimmed = name.trim() || "Section";
-		if (page.sections.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())) return;
-		page.sections.push({ name: trimmed, tags, items: [], extraLines: [] });
-		await this.writePage(entry.file, page);
+		await this.mutatePage(filePath, (page) => {
+			if (page.sections.some((s) => s.name.toLowerCase() === trimmed.toLowerCase())) return false;
+			page.sections.push({ name: trimmed, tags, items: [], extraLines: [] });
+			return true;
+		});
 	}
 
 	/** Rename a section and/or replace its tags. */
@@ -424,13 +446,13 @@ export class InventoryManager extends Events {
 		oldName: string,
 		updates: { name?: string; tags?: string[] },
 	): Promise<void> {
-		const entry = this.requirePage(filePath);
-		const page = clonePage(entry.page);
-		const section = page.sections.find((s) => s.name === oldName);
-		if (!section) return;
-		if (updates.name !== undefined) section.name = updates.name.trim() || section.name;
-		if (updates.tags !== undefined) section.tags = updates.tags;
-		await this.writePage(entry.file, page);
+		await this.mutatePage(filePath, (page) => {
+			const section = page.sections.find((s) => s.name === oldName);
+			if (!section) return false;
+			if (updates.name !== undefined) section.name = updates.name.trim() || section.name;
+			if (updates.tags !== undefined) section.tags = updates.tags;
+			return true;
+		});
 	}
 
 	/**
@@ -439,18 +461,17 @@ export class InventoryManager extends Events {
 	 * folded into the nearest remaining section instead of being deleted.
 	 */
 	async removeSection(filePath: string, name: string): Promise<boolean> {
-		const entry = this.requirePage(filePath);
-		if (entry.page.sections.length <= 1) return false;
-		const page = clonePage(entry.page);
-		const idx = page.sections.findIndex((s) => s.name === name);
-		if (idx === -1) return false;
-		const [removed] = page.sections.splice(idx, 1);
-		if (removed && removed.items.length > 0) {
-			const fallback = page.sections[Math.max(0, idx - 1)] ?? page.sections[0];
-			fallback?.items.push(...removed.items);
-		}
-		await this.writePage(entry.file, page);
-		return true;
+		return this.mutatePage(filePath, (page) => {
+			if (page.sections.length <= 1) return false;
+			const idx = page.sections.findIndex((s) => s.name === name);
+			if (idx === -1) return false;
+			const [removed] = page.sections.splice(idx, 1);
+			if (removed && removed.items.length > 0) {
+				const fallback = page.sections[Math.max(0, idx - 1)] ?? page.sections[0];
+				fallback?.items.push(...removed.items);
+			}
+			return true;
+		});
 	}
 
 	/** Create a brand-new inventory page with one starter section. */
@@ -497,6 +518,23 @@ function findOrCreateSection(page: InventoryPageContent, name: string): Inventor
 		page.sections.push(section);
 	}
 	return section;
+}
+
+function findItem(page: InventoryPageContent, itemId: string): InventoryItem | null {
+	for (const section of page.sections) {
+		const item = section.items.find((i) => i.id === itemId);
+		if (item) return item;
+	}
+	return null;
+}
+
+/** Remove and return an item by id, or null when it isn't on the page. */
+function takeItem(page: InventoryPageContent, itemId: string): InventoryItem | null {
+	for (const section of page.sections) {
+		const idx = section.items.findIndex((i) => i.id === itemId);
+		if (idx !== -1) return section.items.splice(idx, 1)[0] ?? null;
+	}
+	return null;
 }
 
 function sanitizeFileName(name: string): string {

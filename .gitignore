@@ -18,5 +18,11 @@ main.js
 # obsidian
 data.json
 
+# Per-contributor dev test vault path (see scripts/deploy-dev.mjs)
+.dev-vault
+
+# Bundled tests (see scripts/run-tests.mjs)
+.test-build
+
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store

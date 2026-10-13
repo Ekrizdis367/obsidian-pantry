@@ -331,9 +331,12 @@ npm install
 npm run dev      # watch + rebuild main.js
 npm run build    # type-check and produce a production main.js
 npm run lint     # run eslint
+npm test         # run unit tests (Node's built-in runner)
 ```
 
 To test locally, this folder must live at `<Vault>/.obsidian/plugins/pantry/` (matching the `id` in `manifest.json`). After building, reload Obsidian and enable **Pantry** under **Settings → Community plugins**.
+
+Alternatively, point `npm run dev` at a test vault and it will copy each successful build into `<Vault>/.obsidian/plugins/pantry-dev/` (a separate id, so it can sit alongside a normal Pantry install). Set the vault path in the `PANTRY_DEV_VAULT` environment variable, or put it on the first line of a `.dev-vault` file in the repo root (gitignored). With neither set, auto-deploy is skipped. `npm run deploy` runs the same copy once.
 
 ## Release
 

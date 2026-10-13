@@ -6,7 +6,7 @@ export function isInventoryInStock(item: InventoryItem): boolean {
 	return (item.quantity || 0) > 0;
 }
 
-/** Normalised names of inventory items currently marked in stock. */
+/** Normalised names of inventory items with a have quantity above zero. */
 export function buildInStockNameSet(
 	items: readonly InventoryItem[],
 ): Set<string> {
