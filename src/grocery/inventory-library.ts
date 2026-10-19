@@ -6,7 +6,7 @@ import {
 	splitFrontmatter,
 } from "../parser/inventory";
 import { PantrySettings } from "../settings";
-import { InventoryPageContent } from "../types";
+import { InventoryPageContent, InventorySection } from "../types";
 import { listMarkdownFilesInFolders } from "../utils/vault-files";
 
 /** Does a note's inventory-type frontmatter value match the configured target? */
@@ -41,16 +41,10 @@ export async function readInventoryPage(
 /** Build the full markdown content for a brand-new inventory page. */
 export function createInventoryPageContent(
 	settings: PantrySettings,
-	firstSectionName: string,
+	sections: InventorySection[],
 ): string {
 	const property = settings.inventoryTypeProperty.trim() || "type";
 	const value = settings.inventoryTypeValue.trim() || "inventory";
 	const fm = `---\n${property}: ${value}\n---\n\n`;
-	const body = serializeInventoryBody({
-		preamble: "",
-		sections: [
-			{ name: firstSectionName.trim() || "Items", tags: [], items: [], extraLines: [] },
-		],
-	});
-	return `${fm}${body}`;
+	return `${fm}${serializeInventoryBody({ preamble: "", sections })}`;
 }

@@ -332,7 +332,8 @@ export class InventoryManager extends Events {
 	): Promise<boolean> {
 		return this.enqueue(filePath, async () => {
 			const { file } = this.requirePage(filePath);
-			let next: InventoryPageContent | null = null;
+			// Widened explicitly: TS can't see the assignment inside the callback.
+			let next = null as InventoryPageContent | null;
 			await this.app.vault.process(file, (data) => {
 				const page = this.parseFresh(filePath, data);
 				if (!mutate(page)) return data;
@@ -396,10 +397,13 @@ export class InventoryManager extends Events {
 
 	/** Move an item to a different section on the same page, creating it if needed. */
 	async moveItem(filePath: string, itemId: string, targetSectionName: string): Promise<void> {
+		const target = targetSectionName.trim() || "Items";
 		await this.mutatePage(filePath, (page) => {
+			const current = page.sections.find((s) => s.items.some((i) => i.id === itemId));
+			if (!current || current.name === target) return false;
 			const moved = takeItem(page, itemId);
 			if (!moved) return false;
-			findOrCreateSection(page, targetSectionName).items.push(moved);
+			findOrCreateSection(page, target).items.push(moved);
 			return true;
 		});
 	}
@@ -476,13 +480,24 @@ export class InventoryManager extends Events {
 
 	/** Create a brand-new inventory page with one starter section. */
 	async createPage(name: string, folder: string, firstSectionName: string): Promise<TFile> {
+		return this.createPageWithSections(name, folder, [
+			{ name: firstSectionName.trim() || "Items", tags: [], items: [], extraLines: [] },
+		]);
+	}
+
+	/** Create a brand-new inventory page pre-filled with `sections`, at a unique path. */
+	async createPageWithSections(
+		name: string,
+		folder: string,
+		sections: InventorySection[],
+	): Promise<TFile> {
 		const folderPath = folder.replace(/\/+$/, "").trim();
 		if (folderPath && !(this.app.vault.getAbstractFileByPath(folderPath) instanceof TFolder)) {
 			await this.app.vault.createFolder(folderPath);
 		}
 		const baseName = sanitizeFileName(name.trim() || "Inventory");
-		const path = await this.uniqueFilePath(folderPath, baseName);
-		const content = createInventoryPageContent(this.sink.settings, firstSectionName);
+		const path = this.uniqueFilePath(folderPath, baseName);
+		const content = createInventoryPageContent(this.sink.settings, sections);
 		const file = await this.app.vault.create(path, content);
 		const page = parseInventoryBody(splitFrontmatter(content).body);
 		this.pages.set(file.path, { file, page });
@@ -499,7 +514,7 @@ export class InventoryManager extends Events {
 		this.trigger("changed");
 	}
 
-	private async uniqueFilePath(folderPath: string, baseName: string): Promise<string> {
+	private uniqueFilePath(folderPath: string, baseName: string): string {
 		let candidate = folderPath ? `${folderPath}/${baseName}.md` : `${baseName}.md`;
 		let n = 2;
 		while (this.app.vault.getAbstractFileByPath(candidate)) {

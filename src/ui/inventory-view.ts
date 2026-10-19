@@ -21,6 +21,7 @@ import {
 	renderItemRow,
 	renderSectionCard,
 	restoreFocus,
+	runWrite,
 	wireItemDropTarget,
 	wireQuickAddRow,
 } from "./inventory-item-row";
@@ -438,7 +439,7 @@ export class InventoryView extends ItemView {
 
 		const addSectionRow = this.listEl.createDiv({ cls: "pantry-quick-add pantry-add-section-row" });
 		wireQuickAddRow(this.rowCtx, addSectionRow, "New section name…", (name) => {
-			void this.deps.manager.addSection(current.file.path, name, []);
+			runWrite(this.deps.manager.addSection(current.file.path, name, []));
 		});
 	}
 

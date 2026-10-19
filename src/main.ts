@@ -4,7 +4,6 @@ import {
 	Plugin,
 	TAbstractFile,
 	TFile,
-	TFolder,
 	WorkspaceLeaf,
 	debounce,
 } from "obsidian";
@@ -22,25 +21,22 @@ import {
 	writeShoppingStateFile,
 } from "./grocery/shopping-state";
 import { InventoryManager, InventorySaveSink } from "./grocery/inventory-manager";
+import { importLegacyInventory } from "./grocery/inventory-migration";
 import {
 	DEFAULT_INVENTORY_STATE_PATH,
 	emptyInventoryState,
 	inventoryStateHasContent,
 	mergeInventoryState,
 	parseInventoryState,
-	buildLegacyMigrationSections,
 	LegacyInventory,
-	legacyInventoryBackupPath,
 	readInventoryStateFile,
 	readLegacyInventory,
 	resolveInventoryStatePath,
 	serializeInventoryState,
 	writeInventoryStateFile,
 } from "./grocery/inventory-state";
-import { serializeInventoryBody } from "./parser/inventory";
 import { inventoryTypeMatches } from "./grocery/inventory-library";
 import { recipeTypeMatches } from "./parser/recipe";
-import { InventorySection } from "./types";
 import {
 	DEFAULT_CATEGORY_ORDER,
 	DEFAULT_MEAL_PLAN_SLOT_SELECTION,
@@ -529,37 +525,20 @@ export default class PantryPlugin extends Plugin {
 		);
 	}
 
-	/**
-	 * Imports leftover `items` from a pre-file-based inventory-state JSON into
-	 * a new inventory page, then archives the original JSON and rewrites it
-	 * without `items`. Items whose id already lives in a page are skipped, so
-	 * re-running (another synced device, a retry after a failed clear) never
-	 * duplicates anything.
-	 */
+	/** Import leftover pre-file-based items, then rewrite the state file without them. */
 	private async migrateLegacyInventory(): Promise<void> {
 		const legacy = this.pendingLegacyInventory;
 		if (!legacy) return;
 		try {
-			await this.inventoryManager.refresh();
-			const existingIds = new Set(
-				this.inventoryManager.getEntries().map((e) => e.item.id),
-			);
-			const sections = buildLegacyMigrationSections(legacy.items, existingIds);
-			const importedCount = sections.reduce((n, s) => n + s.items.length, 0);
-			const createdPath =
-				sections.length > 0 ? await this.createMigratedInventoryPage(sections) : null;
-
-			const statePath = resolveInventoryStatePath(this.settings.inventoryStatePath);
-			const backupPath = legacyInventoryBackupPath(statePath);
-			if (!this.app.vault.getAbstractFileByPath(backupPath)) {
-				await this.app.vault.create(backupPath, legacy.raw);
-			}
+			const result = await importLegacyInventory(this.app, this.inventoryManager, legacy, {
+				statePath: resolveInventoryStatePath(this.settings.inventoryStatePath),
+				folder: this.settings.inventoryFolders[0]?.trim() || "Pantry",
+			});
 			this.pendingLegacyInventory = null;
 			await this.saveInventoryState();
-
-			if (createdPath) {
+			if (result.pagePath) {
 				new Notice(
-					`Pantry: imported ${importedCount} inventory item(s) into "${createdPath}". The old list was backed up to "${backupPath}".`,
+					`Pantry: imported ${result.importedCount} inventory item(s) into "${result.pagePath}". The old list was backed up to "${result.backupPath}".`,
 				);
 			}
 		} catch (e) {
@@ -569,32 +548,6 @@ export default class PantryPlugin extends Plugin {
 				"Pantry: couldn't import your old inventory list. It's been left untouched in the inventory state file.",
 			);
 		}
-	}
-
-	/** Writes a new inventory page holding `sections`, returning its vault path. */
-	private async createMigratedInventoryPage(sections: InventorySection[]): Promise<string> {
-		const folder = this.settings.inventoryFolders[0]?.trim() || "Pantry";
-		if (!(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) {
-			try {
-				await this.app.vault.createFolder(folder);
-			} catch {
-				// Folder may already exist as a race with another process; ignore.
-			}
-		}
-
-		const property = this.settings.inventoryTypeProperty.trim() || "type";
-		const value = this.settings.inventoryTypeValue.trim() || "inventory";
-		const content = `---\n${property}: ${value}\n---\n\n${serializeInventoryBody({ preamble: "", sections })}`;
-
-		let path = `${folder}/Inventory.md`;
-		let n = 2;
-		while (this.app.vault.getAbstractFileByPath(path)) {
-			path = `${folder}/Inventory ${n}.md`;
-			n++;
-		}
-		await this.app.vault.create(path, content);
-		await this.inventoryManager.refresh();
-		return path;
 	}
 
 	async activateView(): Promise<void> {

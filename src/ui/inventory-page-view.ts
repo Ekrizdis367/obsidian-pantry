@@ -6,7 +6,7 @@ import {
 	WorkspaceLeaf,
 } from "obsidian";
 import { InventoryManager } from "../grocery/inventory-manager";
-import { RowContext, renderSectionCard, restoreFocus, wireQuickAddRow } from "./inventory-item-row";
+import { RowContext, renderSectionCard, restoreFocus, runWrite, wireQuickAddRow } from "./inventory-item-row";
 import { ConfirmModal } from "./confirm-modal";
 
 export const VIEW_TYPE_INVENTORY_PAGE = "pantry-inventory-page";
@@ -125,7 +125,7 @@ export class InventoryPageView extends ItemView {
 			cls: "pantry-quick-add pantry-add-section-row",
 		});
 		wireQuickAddRow(this.rowCtx, addSectionRow, "New section name…", (name) => {
-			void this.deps.manager.addSection(file.path, name, []);
+			runWrite(this.deps.manager.addSection(file.path, name, []));
 		});
 
 		restoreFocus(this.rowCtx);

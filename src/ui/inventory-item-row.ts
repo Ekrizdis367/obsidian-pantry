@@ -47,6 +47,24 @@ export function rowKey(entry: InventoryEntry): string {
 	return `${entry.filePath}::${entry.item.id}`;
 }
 
+/** Fire-and-forget an inventory page write, surfacing failures instead of dropping them. */
+export function runWrite(task: Promise<unknown>): void {
+	task.catch((e: unknown) => {
+		console.error("pantry: inventory write failed", e);
+		new Notice(`Couldn't update inventory: ${String(e)}`);
+	});
+}
+
+function parseDragPayload(raw: string): DragPayload | null {
+	try {
+		const data = JSON.parse(raw) as Partial<DragPayload> | null;
+		if (typeof data?.filePath !== "string" || typeof data.itemId !== "string") return null;
+		return { filePath: data.filePath, itemId: data.itemId };
+	} catch {
+		return null;
+	}
+}
+
 export function openEditItemModal(app: App, manager: InventoryManager, entry: InventoryEntry): void {
 	new AddItemModal(
 		app,
@@ -84,13 +102,11 @@ function openMoveMenu(ctx: RowContext, anchorEl: HTMLElement, entry: InventoryEn
 			}
 			menu.addItem((item) =>
 				item.setTitle(target.sectionName).onClick(() => {
-					void ctx.manager.moveItemToPage(
-						entry.filePath,
-						entry.item.id,
-						target.filePath,
-						target.sectionName,
+					runWrite(
+						ctx.manager
+							.moveItemToPage(entry.filePath, entry.item.id, target.filePath, target.sectionName)
+							.then(() => new Notice(`Moved to ${target.pageName} › ${target.sectionName}`)),
 					);
-					new Notice(`Moved to ${target.pageName} › ${target.sectionName}`);
 				}),
 			);
 		}
@@ -103,7 +119,7 @@ function openMoveMenu(ctx: RowContext, anchorEl: HTMLElement, entry: InventoryEn
 /**
  * Makes `el` a drop target for item cards dragged from anywhere in the
  * inventory (Overview groups, section cards, even the standalone page
- * view) — dropping calls the same cross-page move used by the popover.
+ * view) — dropping calls the same cross-page move used by the move menu.
  */
 export function wireItemDropTarget(
 	ctx: RowContext,
@@ -125,9 +141,11 @@ export function wireItemDropTarget(
 		evt.preventDefault();
 		el.removeClass("is-drop-target");
 		const raw = evt.dataTransfer?.getData(DRAG_ITEM_TYPE);
-		if (!raw) return;
-		const payload = JSON.parse(raw) as DragPayload;
-		void ctx.manager.moveItemToPage(payload.filePath, payload.itemId, targetFilePath, targetSectionName);
+		const payload = raw ? parseDragPayload(raw) : null;
+		if (!payload) return;
+		runWrite(
+			ctx.manager.moveItemToPage(payload.filePath, payload.itemId, targetFilePath, targetSectionName),
+		);
 	});
 }
 
@@ -266,7 +284,7 @@ function onRowKeydown(ctx: RowContext, evt: KeyboardEvent, row: HTMLElement, ent
 			cancelHoverCard(ctx);
 			const delta = evt.key === "ArrowRight" ? 1 : -1;
 			const field = evt.shiftKey ? "desiredQuantity" : "quantity";
-			void ctx.manager.adjustItemQuantity(entry.filePath, entry.item.id, field, delta);
+			runWrite(ctx.manager.adjustItemQuantity(entry.filePath, entry.item.id, field, delta));
 			break;
 		}
 	}
@@ -285,12 +303,12 @@ export function renderQtyStepper(ctx: RowContext, container: HTMLElement, entry:
 	const commit = (updates: Partial<InventoryItem>) => {
 		cancelHoverCard(ctx);
 		ctx.focus.key = rowKey(entry);
-		void ctx.manager.updateItem(entry.filePath, item.id, updates);
+		runWrite(ctx.manager.updateItem(entry.filePath, item.id, updates));
 	};
 	const nudge = (delta: number) => {
 		cancelHoverCard(ctx);
 		ctx.focus.key = rowKey(entry);
-		void ctx.manager.adjustItemQuantity(entry.filePath, item.id, "quantity", delta);
+		runWrite(ctx.manager.adjustItemQuantity(entry.filePath, item.id, "quantity", delta));
 	};
 
 	const minus = stepper.createEl("button", {
@@ -474,7 +492,7 @@ export function renderSectionCard(
 	nameInput.addEventListener("change", () => {
 		const value = nameInput.value.trim();
 		if (value && value !== section.name) {
-			void ctx.manager.updateSection(filePath, section.name, { name: value });
+			runWrite(ctx.manager.updateSection(filePath, section.name, { name: value }));
 		} else {
 			nameInput.value = section.name;
 		}
@@ -491,7 +509,7 @@ export function renderSectionCard(
 			.split(",")
 			.map((t) => t.trim())
 			.filter(Boolean);
-		void ctx.manager.updateSection(filePath, section.name, { tags });
+		runWrite(ctx.manager.updateSection(filePath, section.name, { tags }));
 	});
 
 	const removeSectionBtn = header.createEl("button", {
@@ -525,7 +543,7 @@ export function renderSectionCard(
 		quickAdd,
 		"Add an item… (Enter to add)",
 		(name) => {
-			void ctx.manager.addItem(filePath, section.name, newInventoryItem(name));
+			runWrite(ctx.manager.addItem(filePath, section.name, newInventoryItem(name)));
 		},
 		true,
 	);
