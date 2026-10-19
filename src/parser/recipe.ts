@@ -199,12 +199,30 @@ export function stripFrontmatter(contents: string): string {
 	return contents.slice(after + 1);
 }
 
+/** Heading pattern shared by body-section splitters. */
+const HEADING_PATTERN = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
+
+/** A subheader or list line inside an Ingredients section. */
+export type IngredientSegment =
+	| { kind: "subheading"; title: string; level: number }
+	| { kind: "item"; line: string };
+
+/** A subheader or cooking step inside an Instructions section. */
+export type InstructionBlock =
+	| { kind: "subheading"; title: string; level: number }
+	| { kind: "step"; text: string };
+
 /**
  * Split a recipe body into the markdown that comes before the
- * ingredients section, the raw ingredient lines, and the markdown that
- * comes after. Used by the recipe view to render the surrounding
- * markdown verbatim while replacing the ingredients section with an
- * interactive, multiplier-aware display.
+ * ingredients section, structured ingredient segments, and the
+ * markdown that comes after. Used by the recipe view to render the
+ * surrounding markdown verbatim while replacing the ingredients
+ * section with an interactive, multiplier-aware display.
+ *
+ * Deeper headings under the ingredients heading (e.g. `### Marinade`)
+ * become subheading segments; only list lines become items.
+ * `ingredientLines` is the flat item list for callers that don't need
+ * grouping (grocery extraction still uses {@link extractIngredientLines}).
  *
  * If no ingredients heading is found, the entire body is returned in
  * `before` so the recipe view can render it as-is and the multiplier
@@ -213,15 +231,19 @@ export function stripFrontmatter(contents: string): string {
 export function splitBodyAroundIngredients(
 	body: string,
 	headingName: string,
-): { before: string; ingredientLines: string[]; after: string } {
+): {
+	before: string;
+	segments: IngredientSegment[];
+	ingredientLines: string[];
+	after: string;
+} {
 	const lines = body.split(/\r?\n/);
-	const headingPattern = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
 	const target = headingName.trim().toLowerCase();
 
 	let headingIndex = -1;
 	let headingLevel = 0;
 	for (let i = 0; i < lines.length; i++) {
-		const match = (lines[i] ?? "").match(headingPattern);
+		const match = (lines[i] ?? "").match(HEADING_PATTERN);
 		if (!match) continue;
 		const level = regexCapture(match, 1).length;
 		const title = regexCapture(match, 2).trim().toLowerCase();
@@ -233,51 +255,68 @@ export function splitBodyAroundIngredients(
 	}
 
 	if (headingIndex === -1) {
-		return { before: body, ingredientLines: [], after: "" };
+		return { before: body, segments: [], ingredientLines: [], after: "" };
 	}
 
-	const ingredientLines: string[] = [];
+	const segments: IngredientSegment[] = [];
 	let endIndex = lines.length;
 	for (let i = headingIndex + 1; i < lines.length; i++) {
 		const line = lines[i] ?? "";
-		const heading = line.match(headingPattern);
-		if (heading && regexCapture(heading, 1).length <= headingLevel) {
-			endIndex = i;
-			break;
+		const heading = line.match(HEADING_PATTERN);
+		if (heading) {
+			const level = regexCapture(heading, 1).length;
+			if (level <= headingLevel) {
+				endIndex = i;
+				break;
+			}
+			const title = regexCapture(heading, 2).trim();
+			if (title) {
+				segments.push({ kind: "subheading", title, level });
+			}
+			continue;
 		}
 		if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+\.\s+/.test(line)) {
-			ingredientLines.push(line);
+			segments.push({ kind: "item", line });
 		}
 	}
 
+	const ingredientLines = segments
+		.filter((s): s is Extract<IngredientSegment, { kind: "item" }> => s.kind === "item")
+		.map((s) => s.line);
+
 	const before = trimEndText(lines.slice(0, headingIndex).join("\n"));
 	const after = trimText(lines.slice(endIndex).join("\n"));
-	return { before, ingredientLines, after };
+	return { before, segments, ingredientLines, after };
 }
 
 /**
  * Split an arbitrary block of markdown into the part before the
- * instructions heading, an array of step strings, and the part after
- * the instructions section. Returns `steps: []` when no heading or no
- * list items are found, and the original input in `before`.
+ * instructions heading, structured instruction blocks (subheaders +
+ * steps), and the part after the instructions section. Returns
+ * `blocks: []` / `steps: []` when no heading or no list items are
+ * found, and the original input in `before`.
  *
  * Each step string is the raw markdown of that step's body, with any
  * leading list marker removed. Continuation lines (everything between
- * one list marker and the next) are kept so that multi-line steps and
- * sub-bullets render correctly.
+ * one list marker and the next, excluding deeper subheaders) are kept
+ * so that multi-line steps and sub-bullets render correctly.
  */
 export function splitBodyAroundInstructions(
 	body: string,
 	headingName: string,
-): { before: string; steps: string[]; after: string } {
+): {
+	before: string;
+	blocks: InstructionBlock[];
+	steps: string[];
+	after: string;
+} {
 	const lines = body.split(/\r?\n/);
-	const headingPattern = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
 	const target = headingName.trim().toLowerCase();
 
 	let headingIndex = -1;
 	let headingLevel = 0;
 	for (let i = 0; i < lines.length; i++) {
-		const match = (lines[i] ?? "").match(headingPattern);
+		const match = (lines[i] ?? "").match(HEADING_PATTERN);
 		if (!match) continue;
 		const level = regexCapture(match, 1).length;
 		const title = regexCapture(match, 2).trim().toLowerCase();
@@ -289,12 +328,12 @@ export function splitBodyAroundInstructions(
 	}
 
 	if (headingIndex === -1) {
-		return { before: body, steps: [], after: "" };
+		return { before: body, blocks: [], steps: [], after: "" };
 	}
 
 	let endIndex = lines.length;
 	for (let i = headingIndex + 1; i < lines.length; i++) {
-		const heading = (lines[i] ?? "").match(headingPattern);
+		const heading = (lines[i] ?? "").match(HEADING_PATTERN);
 		if (heading && regexCapture(heading, 1).length <= headingLevel) {
 			endIndex = i;
 			break;
@@ -302,42 +341,65 @@ export function splitBodyAroundInstructions(
 	}
 
 	const sectionLines = lines.slice(headingIndex + 1, endIndex);
-	const steps = parseInstructionSteps(sectionLines);
+	const blocks = parseInstructionBlocks(sectionLines, headingLevel);
+	const steps = blocks
+		.filter((b): b is Extract<InstructionBlock, { kind: "step" }> => b.kind === "step")
+		.map((b) => b.text);
 
 	const before = trimEndText(lines.slice(0, headingIndex).join("\n"));
 	const after = trimText(lines.slice(endIndex).join("\n"));
-	return { before, steps, after };
+	return { before, blocks, steps, after };
 }
 
-function parseInstructionSteps(sectionLines: string[]): string[] {
+/**
+ * Parse an instructions section into subheaders and steps.
+ * Deeper headings than the section heading become visual group titles;
+ * ordered list items are preferred when any exist, otherwise unordered.
+ */
+function parseInstructionBlocks(
+	sectionLines: string[],
+	sectionLevel: number,
+): InstructionBlock[] {
 	const orderedRe = /^\s*\d+\.\s+(.*)$/;
 	const unorderedRe = /^\s*[-*+]\s+(.*)$/;
+	const hasOrdered = sectionLines.some((line) => orderedRe.test(line));
+	const itemRe = hasOrdered ? orderedRe : unorderedRe;
 
-	const startsForPattern = (re: RegExp): { idx: number; first: string }[] => {
-		const out: { idx: number; first: string }[] = [];
-		for (let i = 0; i < sectionLines.length; i++) {
-			const m = (sectionLines[i] ?? "").match(re);
-			if (m) out.push({ idx: i, first: regexCapture(m, 1) });
-		}
-		return out;
+	const blocks: InstructionBlock[] = [];
+	let currentStep: string[] | null = null;
+
+	const flushStep = (): void => {
+		if (!currentStep) return;
+		const text = currentStep.join("\n").trim();
+		if (text) blocks.push({ kind: "step", text });
+		currentStep = null;
 	};
 
-	let starts = startsForPattern(orderedRe);
-	if (starts.length === 0) {
-		starts = startsForPattern(unorderedRe);
-	}
-	if (starts.length === 0) return [];
-
-	const steps: string[] = [];
-	for (let i = 0; i < starts.length; i++) {
-		const start = starts[i]!;
-		const next = starts[i + 1]?.idx ?? sectionLines.length;
-		const parts = [start.first];
-		for (let j = start.idx + 1; j < next; j++) {
-			parts.push(sectionLines[j] ?? "");
+	for (const line of sectionLines) {
+		const heading = line.match(HEADING_PATTERN);
+		if (heading) {
+			const level = regexCapture(heading, 1).length;
+			if (level > sectionLevel) {
+				flushStep();
+				const title = regexCapture(heading, 2).trim();
+				if (title) {
+					blocks.push({ kind: "subheading", title, level });
+				}
+				continue;
+			}
 		}
-		const text = parts.join("\n").trim();
-		if (text) steps.push(text);
+
+		const item = line.match(itemRe);
+		if (item) {
+			flushStep();
+			currentStep = [regexCapture(item, 1)];
+			continue;
+		}
+
+		if (currentStep) {
+			currentStep.push(line);
+		}
 	}
-	return steps;
+	flushStep();
+	return blocks;
 }

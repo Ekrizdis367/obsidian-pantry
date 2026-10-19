@@ -18,17 +18,17 @@ Recipe view with hero image, scaled ingredients, instructions, and portion multi
 - **Automatic consolidation.** Ingredients shared across recipes are merged. `1 cup milk` + `2 cups milk` becomes `3 cup milk`.
 - **Smart grouping.** Items are grouped by category (Produce, Dairy & Eggs, Pantry, ...) so the list matches the layout of your store. Switch to by-recipe or a flat list at any time.
 - **One-off items.** Add anything that isn't tied to a recipe (paper towels, snacks). One-offs live alongside recipe items and clear with the rest of the list. They are stored in a vault JSON file (`Pantry/shopping-state.json` by default) so they sync across devices with your notes — unlike plugin settings, which are device-local.
-- **Inventory.** Track what you already have (spices, staples, leftovers) across your own inventory notes, organized into named, taggable sections (e.g. a "Dry Goods" page with Pantry / Cabinet / Under Stairs sections) — the same folder-based cross-referencing recipes use. Each item tracks a "have" and a "want" quantity via a clearly-marked +/- stepper (also adjustable with arrow keys — Shift+arrow for the target amount), so the status icon reflects real stock levels, not just yes/no. The Inventory tab has two modes: **Overview** shows every item in one filterable master list (or broken down by page/section/tag), with small chip filters for tags and sections (an always-present "All" chip resets the filter); **Manage** lets you edit each page's sections and items directly, with name auto-complete for fast, low-friction entry. Individual inventory notes also open in the same section-card editor automatically — just like recipe notes open in the recipe view — or manually via "Inventory mode" in the note's `···` menu. Items with some quantity on hand are automatically excluded from the grocery list (name-only match); once you run out, they're pulled back onto the list automatically. Complements `#IgnoreIngredient` for permanent per-recipe skips.
-- **Persistent checkboxes.** Tick items off as you shop. Your progress survives restarts and syncs across devices until you officially clear the list.
+- **Inventory.** Track what you already have (spices, staples, leftovers) across your own inventory notes, organized into named, taggable sections (e.g. a "Dry Goods" page with Pantry / Cabinet / Under Stairs sections) — the same folder-based cross-referencing recipes use. Toggle **In** when you have an item; matching grocery lines are omitted automatically (name-only match). Uncheck when you run out so the next recipe pulls it back onto the list. Complements `#IgnoreIngredient` for permanent per-recipe skips. Each item tracks a "have" and a "want" quantity via a clearly-marked +/- stepper (also adjustable with arrow keys — Shift+arrow for the target amount), so the status icon reflects real stock levels, not just yes/no. The Inventory tab has two modes: **Overview** shows every item in one filterable master list (or broken down by page/section/tag), with small chip filters for tags and sections (an always-present "All" chip resets the filter); **Manage** lets you edit each page's sections and items directly, with name auto-complete for fast, low-friction entry. Individual inventory notes also open in the same section-card editor automatically — just like recipe notes open in the recipe view — or manually via "Inventory mode" in the note's `···` menu. Items with some quantity on hand are automatically excluded from the grocery list (name-only match); once you run out, they're pulled back onto the list automatically. Complements `#IgnoreIngredient` for permanent per-recipe skips.
+- **Persistent checkboxes.** Tick items off as you shop. Your progress survives restarts and syncs across devices until you officially clear the list. Optionally move checked items to the bottom of each section or hide them (settings or the list-checks button on the grocery list).
 - **Collapsible sections.** Click any section header to collapse or expand it. Sections you finish shopping auto-collapse so the next aisle stays in view (toggleable in settings).
-- **Custom recipe view.** Notes flagged with a configurable type property (`type: recipe` by default, and wikilink values like `[[Recipes]]` are recognised) open in a dedicated view with a hero image, nutrition card, an instructions panel, meat-temperature warnings, and a portion multiplier that scales both the displayed quantities *and* the grocery list.
+- **Custom recipe view.** Notes flagged with a configurable type property (`type: recipe` by default, and wikilink values like `[[Recipes]]` are recognised) open in a dedicated view with a hero image, nutrition card, an instructions panel, meat-temperature warnings, and a portion multiplier that scales both the displayed quantities *and* the grocery list. Deeper headings under Ingredients/Instructions show as section labels; tap ingredients or steps to cross them off while cooking.
 - **Diet & cooking-time badges.** Add `diet`, `prepTime`, and `cookTime` to the frontmatter and the recipe view shows them as quick-glance badges below the title.
 - **No duplicate hero image.** When a recipe both embeds its photo inline and references it via `image` frontmatter, an optional setting hides the matching inline copy so the image appears only once.
 - **Allergen warnings.** Set your personal allergens in settings; recipes whose `allergens` frontmatter overlaps yours show a red banner in the recipe view and a warning icon next to the recipe in the grocery list.
 - **Favorites.** Star a recipe with one click and the `favorite: true` frontmatter is set automatically. Used by the meal recommender.
 - **Kids approved.** Thumbs-up / thumbs-down buttons in the recipe view write `kidsApproved: true` or `kidsApproved: false` to frontmatter (click again to clear). Handy for filtering kid-friendly meals in Bases or your own workflows.
 - **Last-made tracking & cook counts.** Optionally stamp today's date into `lastMade` and increment `cookedCount` whenever you add a recipe to the grocery list — powering the cooking-stats leaderboard.
-- **Weekly meal planner.** Plan the meals you actually cook — enable only dinner, or breakfast through snacks — in a grid view backed by a plain-Markdown note of recipe links. Push the whole plan to the grocery list with one **Add to grocery list** button (or enable continuous auto-sync), import any existing meal-plan note full of links you already maintain, and **auto-fill empty slots** from recipe `status` and `meal` frontmatter.
+- **Weekly meal planner.** Plan the meals you actually cook — enable only dinner, or breakfast through snacks — in a grid view backed by a plain-Markdown note of recipe links. Drag recipes between days and meal slots to reschedule. Push the whole plan to the grocery list with one **Add to grocery list** button (or enable continuous auto-sync), import any existing meal-plan note full of links you already maintain, and **auto-fill empty slots** from optional recipe `status` and `meal` frontmatter (with per-slot meal aliases).
 - **Import from URL.** Paste a recipe page address and Pantry extracts structured data (schema.org JSON-LD) into a normalized recipe note with the full Pantry frontmatter shape, then opens it in the recipe view.
 - **Import from text.** Paste recipe text copied from a website, email, or PDF and Pantry parses it into the same normalized note — ideal for pages with many recipes, paywalled sites, or anything without structured data.
 - **Meal recommender.** "Suggest a meal" surfaces recipes you haven't cooked recently, with optional filters for favorites and allergens.
@@ -64,7 +64,7 @@ Recipe view with hero image, scaled ingredients, instructions, and portion multi
 
 ## Recipe format
 
-The plugin looks for the configured **Ingredients heading** (any level) inside each selected recipe and parses every list item beneath it as an ingredient. If no matching heading is found, every list item in the file is parsed.
+The plugin looks for the configured **Ingredients heading** (any level) inside each selected recipe and parses every list item beneath it as an ingredient. If no matching heading is found, every list item in the file is parsed. Deeper headings under Ingredients or Instructions (for example `### Marinade`) become visual section labels in the recipe view; grocery consolidation still uses only the list items.
 
 Each ingredient line is interpreted as `[quantity] [unit] [name]`. Supported quantities include whole numbers, decimals, simple fractions (`1/2`), mixed fractions (`1 1/2`), and unicode fractions (`½`). Common units (cup, tbsp, tsp, oz, lb, g, kg, can, clove, bunch, ...) are recognised and normalised so plurals consolidate. Trailing parentheticals like `(diced)` or `(softened)` are stripped from the name before grocery-list consolidation, but the recipe view keeps them and shows them in italic after the ingredient name.
 
@@ -89,7 +89,7 @@ The tag is matched case-insensitively; `#ignoreingredient`, `#ignore-ingredient`
 
 Pantry ships a custom view for recipe notes. To opt a note in, add `type: recipe` to its frontmatter. Both the property name and the value it's matched against are configurable in **Settings → Recipe view** (set **Recipe type property** to `category`, `kind`, etc. if you don't use `type`). Matching is case-insensitive, and wikilink values such as `type: [[Recipes]]` are matched against the linked note's name — so the property picker's linked values work too. When auto-open is on (the default), freshly opening such a note switches the leaf into the recipe view automatically. Switching to another tab and back keeps whatever view that tab was already in (Markdown stays Markdown). Closing the note and opening it again runs auto-open once more. If frontmatter is not ready the instant the file opens, Pantry retries once Obsidian finishes parsing YAML. After that, Pantry briefly re-asserts the recipe view so Obsidian's own Markdown leaf update cannot overwrite it on warm opens. You can always switch with the **Edit as Markdown** button in the view's action bar, the **Recipe mode** entry in the pane's three-dot menu, or the **Open as Markdown** / **Open as recipe** commands.
 
-The view shows a meta banner with the multiplier, servings, and nutrition; a hero image card; a tabular ingredients list with safe-cooking-temperature badges next to detected meats; and a numbered instructions card. Trailing parentheticals on ingredient lines (e.g. `(softened)`) appear in italic after the ingredient name. The meta banner also includes a favorite star, **kids approved** thumbs-up / thumbs-down controls, and the add-to-grocery-list toggle.
+The view shows a meta banner with the multiplier, servings, and nutrition; a hero image card; a tabular ingredients list with safe-cooking-temperature badges next to detected meats; and a numbered instructions card. Trailing parentheticals on ingredient lines (e.g. `(softened)`) appear in italic after the ingredient name. The meta banner also includes a favorite star, **kids approved** thumbs-up / thumbs-down controls, and the add-to-grocery-list toggle. Tap an ingredient or step to strike it through while you cook (session-only — resets when you leave the recipe).
 
 If a recipe both embeds its photo inline and points to the same file via the `image` frontmatter, enable **Settings → Recipe view → Suppress duplicate inline image** to hide the first inline copy that matches the frontmatter image so it only renders once (off by default).
 
@@ -109,8 +109,8 @@ Frontmatter properties the view reads and writes:
 | `prepTime`, `cookTime`, `totalTime` | number | Minutes. `totalTime` is computed from `prepTime + cookTime` when not provided. |
 | `favorite` | boolean | Set with one click via the star button in the recipe view. |
 | `kidsApproved` | boolean | Set with the thumbs-up (`true`) or thumbs-down (`false`) buttons in the recipe view. Absent when neither is selected. |
-| `status` | number | Optional priority for meal-planner auto-fill (lower numbers are weighted more heavily). Not read by the recipe view itself. |
-| `meal` | array of strings | Optional meal tags (`breakfast`, `lunch`, `dinner`, `snacks`) matched when auto-filling empty planner slots. |
+| `status` | number | Optional priority for meal-planner auto-fill (lower numbers are weighted more heavily). Recipes without status are still eligible. Not read by the recipe view itself. |
+| `meal` | array of strings | Optional meal tags matched when auto-filling empty planner slots (slot names by default, or custom aliases in settings). |
 | `lastMade` | date | Auto-stamped to today's date when you add the recipe to the grocery list (configurable in settings). |
 | `cookedCount` | number | Auto-incremented when `lastMade` advances to a new day. Powers the cooking stats leaderboard. |
 | `source` | string | Original recipe page URL. Written automatically when you import from a URL. |
@@ -131,13 +131,17 @@ carbs: 96
 ---
 
 ## Ingredients
+### Pasta
 - 1 lb spaghetti
+### Sauce
 - 2 cups crushed tomatoes
 - 3 cloves garlic
 
 ## Instructions
+### Cook
 1. Boil water and salt heavily.
 2. Cook spaghetti to al dente.
+### Finish
 3. Toss with sauce and serve.
 ```
 
@@ -231,14 +235,15 @@ Already keep your own master meal-plan note full of recipe links? Run **Import m
 
 ### Auto-fill from status
 
-If your recipes already carry a numeric **`status`** field (1 = cook soonest, 5 = lowest priority) and optional **`meal`** tags (`breakfast`, `lunch`, `dinner`, `snacks`), Pantry can fill **empty** planner slots for you without touching slots you've already picked manually.
+Pantry can fill **empty** planner slots from your recipe library without touching slots you've already picked manually.
 
 - Press **Auto-fill empty slots** in the planner header, or run **Auto-fill empty meal planner slots** from the command palette.
 - Only blank cells are filled — existing picks stay as-is. Start from an empty grid to populate the whole week in one go.
-- By default, recipes with `status` of **1 through 5** are eligible; lower numbers are weighted more heavily (a `1` is five times as likely as a `5`).
-- When a recipe's `meal` list includes the slot name, it is preferred for that slot. Recipes with no `meal` value can fill any slot.
+- **`status` is optional.** Recipes with no status are eligible. When a numeric status is present, values of **1 through 5** (configurable) are eligible, and lower numbers are weighted more heavily.
+- Optional **`meal`** tags are matched against each slot. By default that means the slot name (`breakfast`, `lunch`, `dinner`, `snacks` — and `snack` for Snacks). Under **Settings → Meal planning → Auto-fill meal aliases** you can map custom tags (e.g. set Lunch and Dinner to `main`) so one tag can fill multiple slots. Recipes with no `meal` value can fill any slot.
+- Drag a recipe chip to another day or meal slot to reschedule it without removing and re-adding.
 
-Configure the frontmatter property names and allowed status values under **Settings → Meal planning → Auto-fill status property**, **Auto-fill status values**, and **Auto-fill meal property**.
+Configure the frontmatter property names, allowed status values, and meal aliases under **Settings → Meal planning**.
 
 ### Meal planning settings
 
@@ -248,9 +253,10 @@ Configure the frontmatter property names and allowed status values under **Setti
 | Include weekend days | Off | Adds Saturday and Sunday to the grid (weekdays only when off). |
 | Meal plan note | *(empty)* | Vault path of the Markdown note the planner reads and writes. Created automatically if missing. |
 | Auto-sync meal plan to the shopping list | Off | When on, linked recipes in the plan note continuously contribute to the grocery list as you edit the planner. |
-| Auto-fill status property | `status` | Frontmatter field used when auto-filling empty slots. |
-| Auto-fill status values | `1, 2, 3, 4, 5` | Numeric values eligible for auto-fill. Lower numbers are weighted more heavily. |
-| Auto-fill meal property | `meal` | Frontmatter list matched against each slot name (`breakfast`, `lunch`, `dinner`, `snacks`). Recipes with no value can fill any slot. |
+| Auto-fill status property | `status` | Optional frontmatter field for weighting auto-fill. Recipes without it remain eligible. |
+| Auto-fill status values | `1, 2, 3, 4, 5` | Numeric values eligible when a recipe has a status. Lower numbers are weighted more heavily. |
+| Auto-fill meal property | `meal` | Frontmatter list matched against each slot (or its aliases). Recipes with no value can fill any slot. |
+| Auto-fill meal aliases | *(slot name)* | Optional comma-separated tags per slot (e.g. Lunch / Dinner → `main`). |
 
 ```yaml
 ---

@@ -1,5 +1,5 @@
 import { ingredientKey } from "../parser/ingredient";
-import { PantrySettings } from "../settings";
+import { CheckedItemDisplay, PantrySettings } from "../settings";
 import {
 	GroceryItem,
 	GroceryItemSource,
@@ -192,4 +192,20 @@ function pushTo(map: Map<string, GroceryItem[]>, key: string, item: GroceryItem)
 	const arr = map.get(key);
 	if (arr) arr.push(item);
 	else map.set(key, [item]);
+}
+
+/**
+ * Arrange items within a grocery section according to the checked-item
+ * display setting. Applied at render time (not in {@link groupForDisplay})
+ * so auto-collapse and export still see every item.
+ */
+export function arrangeCheckedItems(
+	items: GroceryItem[],
+	mode: CheckedItemDisplay,
+): GroceryItem[] {
+	if (mode === "inline") return items;
+	if (mode === "hidden") return items.filter((item) => !item.checked);
+	const unchecked = items.filter((item) => !item.checked);
+	const checked = items.filter((item) => item.checked);
+	return [...unchecked, ...checked];
 }

@@ -31,6 +31,11 @@ export interface PantrySettings {
 	instructionsHeading: string;
 	/** How items should be grouped in the grocery list view. */
 	grouping: GroupingMode;
+	/**
+	 * How checked grocery items are arranged inside each section:
+	 * keep their sort position, move to the bottom, or hide them.
+	 */
+	checkedItemDisplay: CheckedItemDisplay;
 	/** Where each item's category comes from. */
 	categorySource: CategorySource;
 	/** Order of categories. Unknown categories appear at the end alphabetically. */
@@ -79,6 +84,13 @@ export interface PantrySettings {
 	autoFillStatusValues: number[];
 	/** Frontmatter property listing which meals a recipe suits (default: meal). */
 	autoFillMealProperty: string;
+	/**
+	 * Optional per-slot aliases for the meal property during auto-fill.
+	 * Keys are canonical slot names (Breakfast, Lunch, Dinner, Snacks).
+	 * Values are comma-separated match strings (e.g. `"main, dinner"`).
+	 * Empty / missing → default slot-name matching (Snacks also matches `snack`).
+	 */
+	autoFillMealAliases: Record<string, string>;
 	/** Default vault-relative folder for recipes imported from a URL. Empty = first recipe folder. */
 	importFolder: string;
 	/** Optional vault note used as the import template. Empty = built-in Pantry template. */
@@ -116,6 +128,9 @@ export interface PantrySettings {
 }
 
 export type NutritionDisplay = "per-serving" | "total";
+
+/** How checked items appear inside each grocery list section. */
+export type CheckedItemDisplay = "inline" | "bottom" | "hidden";
 
 export interface PantrySavedState {
 	/** One-off shopping items the user has added manually. */
@@ -240,6 +255,43 @@ export function activeMealSlots(settings: PantrySettings): string[] {
 	return normalizeMealPlanSlots(settings.mealPlanSlots);
 }
 
+/** Default meal-tag matches for a planner slot when no alias override is set. */
+export function defaultMealAliasesForSlot(slot: string): string[] {
+	const lower = slot.trim().toLowerCase();
+	if (lower === "snacks") return ["snack", "snacks"];
+	return lower ? [lower] : [];
+}
+
+/**
+ * Meal-tag strings that make a recipe eligible for `slot` during auto-fill.
+ * Uses {@link PantrySettings.autoFillMealAliases} when set; otherwise the
+ * default slot-name matches.
+ */
+export function mealAliasesForSlot(
+	settings: PantrySettings,
+	slot: string,
+): string[] {
+	const canonical =
+		MEAL_PLAN_SLOTS.find(
+			(s) => s.toLowerCase() === slot.trim().toLowerCase(),
+		) ?? slot;
+	const raw =
+		settings.autoFillMealAliases[canonical] ??
+		settings.autoFillMealAliases[slot] ??
+		"";
+	if (typeof raw === "string" && raw.trim()) {
+		return [
+			...new Set(
+				raw
+					.split(",")
+					.map((s) => s.trim().toLowerCase())
+					.filter(Boolean),
+			),
+		];
+	}
+	return defaultMealAliasesForSlot(slot);
+}
+
 /** Whether a canonical slot name is enabled in the planner. */
 export function isMealPlanSlotEnabled(
 	settings: PantrySettings,
@@ -272,6 +324,7 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 	ingredientsHeading: "Ingredients",
 	instructionsHeading: "Instructions",
 	grouping: "category",
+	checkedItemDisplay: "inline",
 	categorySource: "dictionary",
 	categoryOrder: [...DEFAULT_CATEGORY_ORDER],
 	categoryOverrides: [],
@@ -296,6 +349,7 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 	autoFillStatusProperty: "status",
 	autoFillStatusValues: [...DEFAULT_AUTO_FILL_STATUS_VALUES],
 	autoFillMealProperty: "meal",
+	autoFillMealAliases: {},
 	importFolder: "",
 	importTemplatePath: "",
 	shoppingStatePath: DEFAULT_SHOPPING_STATE_PATH,

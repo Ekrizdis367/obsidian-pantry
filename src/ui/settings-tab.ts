@@ -81,6 +81,12 @@ export class PantrySettingsTab extends PluginSettingTab {
 						render: (setting) => this.wireGrouping(setting),
 					},
 					{
+						name: "Checked items",
+						desc: "How checked-off items appear inside each grocery list section. Also available from the list-checks button on the grocery list.",
+						render: (setting) =>
+							this.wireCheckedItemDisplay(setting),
+					},
+					{
 						name: "Auto-collapse completed sections",
 						desc: "Collapse a section automatically once every item in it is checked off.",
 						render: (setting) =>
@@ -248,22 +254,32 @@ export class PantrySettingsTab extends PluginSettingTab {
 					},
 					{
 						name: "Auto-fill status property",
-						desc: "Frontmatter field used when auto-filling empty planner slots. Lower numeric values are weighted more heavily.",
+						desc: "Optional frontmatter field used when auto-filling empty planner slots. Recipes without this property are still eligible. When present, lower numeric values are weighted more heavily.",
 						render: (setting) =>
 							this.wireAutoFillStatusProperty(setting),
 					},
 					{
 						name: "Auto-fill status values",
-						desc: "Comma-separated numbers eligible for auto-fill (e.g. 1, 2, 3, 4, 5). Lower values are weighted more heavily. Only empty slots are filled; existing picks are never replaced.",
+						desc: "Comma-separated numbers eligible for auto-fill when a recipe has a status (e.g. 1, 2, 3, 4, 5). Lower values are weighted more heavily. Recipes with no status are always eligible. Only empty slots are filled; existing picks are never replaced.",
 						render: (setting) =>
 							this.wireAutoFillStatusValues(setting),
 					},
 					{
 						name: "Auto-fill meal property",
-						desc: "Frontmatter list matched against each planner slot (breakfast, lunch, dinner, snacks). Recipes with no value are eligible for any slot.",
+						desc: "Frontmatter list matched against each planner slot. Recipes with no value are eligible for any slot. Optional per-slot aliases below can map tags like main to lunch and dinner.",
 						render: (setting) =>
 							this.wireAutoFillMealProperty(setting),
 					},
+					{
+						name: "Auto-fill meal aliases",
+						desc: "Optional comma-separated meal tags that match each planner slot. Leave blank to use the slot name (Snacks also matches snack).",
+					},
+					...MEAL_PLAN_SLOTS.map((slot) => ({
+						name: `${slot} matches`,
+						desc: `Tags that make a recipe eligible for ${slot} (e.g. main, ${slot.toLowerCase()}).`,
+						render: (setting: Setting) =>
+							this.wireAutoFillMealAlias(setting, slot),
+					})),
 				],
 			},
 			{
@@ -378,6 +394,24 @@ export class PantrySettingsTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.host.settings.grouping =
 						value as PantrySettings["grouping"];
+					await this.host.saveSettings();
+					this.host.manager.trigger("changed");
+				}),
+		);
+	}
+
+	private wireCheckedItemDisplay(setting: Setting): void {
+		setting.addDropdown((dd) =>
+			dd
+				.addOptions({
+					inline: "Keep in place",
+					bottom: "Move to bottom",
+					hidden: "Hide checked",
+				})
+				.setValue(this.host.settings.checkedItemDisplay)
+				.onChange(async (value) => {
+					this.host.settings.checkedItemDisplay =
+						value as PantrySettings["checkedItemDisplay"];
 					await this.host.saveSettings();
 					this.host.manager.trigger("changed");
 				}),
@@ -773,6 +807,27 @@ export class PantrySettingsTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.host.settings.autoFillMealProperty =
 						value.trim() || "meal";
+					await this.host.saveSettings();
+				}),
+		);
+	}
+
+	private wireAutoFillMealAlias(setting: Setting, slot: string): void {
+		const placeholder =
+			slot.toLowerCase() === "snacks"
+				? "snack, snacks"
+				: slot.toLowerCase();
+		setting.addText((text) =>
+			text
+				.setPlaceholder(placeholder)
+				.setValue(this.host.settings.autoFillMealAliases[slot] ?? "")
+				.onChange(async (value) => {
+					const trimmed = value.trim();
+					if (trimmed) {
+						this.host.settings.autoFillMealAliases[slot] = trimmed;
+					} else {
+						delete this.host.settings.autoFillMealAliases[slot];
+					}
 					await this.host.saveSettings();
 				}),
 		);
