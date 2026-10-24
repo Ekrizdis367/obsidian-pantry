@@ -1,5 +1,6 @@
 import { App, Modal, Notice, Setting } from "obsidian";
 import { fetchHtml } from "../importer/fetcher";
+import { downloadImportedImage } from "../importer/image-downloader";
 import { defaultImportFolder } from "../importer/note-builder";
 import { extractRecipe } from "../importer/schema-extractor";
 import { saveImportedRecipe } from "../importer/writer";
@@ -99,6 +100,27 @@ export class ImportRecipeModal extends Modal {
 		}
 
 		const settings = this.host.getSettings();
+		if (settings.downloadImportedImages && recipe.image.trim()) {
+			// Empty image path setting falls back to the import folder so an
+			// enabled toggle never fails on a blank path.
+			const imageFolder =
+				settings.downloadImportedImagePath.trim() ||
+				defaultImportFolder(settings);
+			const localPath = await downloadImportedImage(
+				this.app,
+				recipe.image,
+				this.url,
+				imageFolder,
+				recipe.title,
+			);
+			if (localPath) {
+				recipe.image = localPath;
+			} else {
+				new Notice(
+					"Could not download image. Using the remote URL instead.",
+				);
+			}
+		}
 		this.close();
 		await saveImportedRecipe(this.app, recipe, settings, this.folder);
 	}

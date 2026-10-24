@@ -217,6 +217,17 @@ export class PantrySettingsTab extends PluginSettingTab {
 						desc: `Optional vault note used as the import template. Leave blank for the built-in Pantry template. Tokens: ${RECIPE_TEMPLATE_TOKEN_HINT}.`,
 						render: (setting) => this.wireImportTemplatePath(setting),
 					},
+					{
+						name: "Download imported images",
+						desc: "When importing a recipe from a URL, download its image into the vault and reference the local copy instead of the remote URL.",
+						render: (setting) => this.wireDownloadImportedImages(setting),
+					},
+					{
+						name: "Image save location",
+						desc: "Vault-relative folder for downloaded recipe images. Leave blank to use the import folder.",
+						visible: () => this.host.settings.downloadImportedImages,
+						render: (setting) => this.wireImportImageFolder(setting),
+					},
 				],
 			},
 			{
@@ -683,6 +694,30 @@ export class PantrySettingsTab extends PluginSettingTab {
 				.setValue(this.host.settings.importTemplatePath)
 				.onChange(async (value) => {
 					this.host.settings.importTemplatePath = value.trim();
+					await this.host.saveSettings();
+				}),
+		);
+	}
+
+	private wireDownloadImportedImages(setting: Setting): void {
+		setting.addToggle((toggle) =>
+			toggle
+				.setValue(this.host.settings.downloadImportedImages)
+				.onChange(async (value) => {
+					this.host.settings.downloadImportedImages = value;
+					await this.host.saveSettings();
+					this.reloadSettings();
+				}),
+		);
+	}
+
+	private wireImportImageFolder(setting: Setting): void {
+		setting.addText((text) =>
+			text
+				.setPlaceholder("Attachments/recipe-images")
+				.setValue(this.host.settings.downloadImportedImagePath)
+				.onChange(async (value) => {
+					this.host.settings.downloadImportedImagePath = value.trim();
 					await this.host.saveSettings();
 				}),
 		);

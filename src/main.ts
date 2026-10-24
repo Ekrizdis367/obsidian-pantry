@@ -1354,6 +1354,14 @@ function mergeSettings(raw: Partial<PantrySettings> | null): PantrySettings {
 			typeof raw.importFolder === "string"
 				? raw.importFolder.trim()
 				: base.importFolder,
+		downloadImportedImages:
+			typeof raw.downloadImportedImages === "boolean"
+				? raw.downloadImportedImages
+				: base.downloadImportedImages,
+		downloadImportedImagePath:
+			typeof raw.downloadImportedImagePath === "string"
+				? raw.downloadImportedImagePath.trim()
+				: base.downloadImportedImagePath,
 		importTemplatePath:
 			typeof raw.importTemplatePath === "string"
 				? raw.importTemplatePath.trim()

@@ -134,6 +134,10 @@ export interface PantrySettings {
 	autoFillMealAliases: Record<string, string>;
 	/** Default vault-relative folder for recipes imported from a URL. Empty = first recipe folder. */
 	importFolder: string;
+	/** When true, URL imports download the recipe image into the vault and reference the local copy. */
+	downloadImportedImages: boolean;
+	/** Vault-relative folder for downloaded recipe images. */
+	downloadImportedImagePath: string;
 	/** Optional vault note used as the import template. Empty = built-in Pantry template. */
 	importTemplatePath: string;
 	/**
@@ -398,6 +402,8 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 	autoFillMealAliases: {},
 	importFolder: "",
 	importTemplatePath: "",
+	downloadImportedImages: false,
+	downloadImportedImagePath: "",
 	shoppingStatePath: DEFAULT_SHOPPING_STATE_PATH,
 	state: {
 		oneOffs: [],
