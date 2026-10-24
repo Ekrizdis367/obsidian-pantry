@@ -31,8 +31,8 @@ interface WeightedCandidate {
 
 /**
  * Fill only empty planner cells from the recipe library. Slots that already
- * contain a recipe are never modified, so manual picks stay intact. An
- * entirely empty grid is filled end-to-end.
+ * contain a recipe or a note are never modified, so manual picks stay
+ * intact. An entirely empty grid is filled end-to-end.
  */
 export function autoFillEmptySlots(
 	app: App,
@@ -69,7 +69,7 @@ export function autoFillEmptySlots(
 				continue;
 			}
 
-			cell.push(pick);
+			cell.push({ kind: "recipe", file: pick });
 			filled++;
 		}
 	}
@@ -302,7 +302,7 @@ function basenameFromPath(path: string): string {
 /** User-facing summary after an auto-fill run. */
 export function formatAutoFillNotice(result: AutoFillResult): string {
 	if (result.filled === 0 && result.unchanged > 0 && result.skipped === 0) {
-		return "Every slot already has a recipe — nothing to fill.";
+		return "Every slot already has a meal — nothing to fill.";
 	}
 	if (result.filled === 0) {
 		const hint =

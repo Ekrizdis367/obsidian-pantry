@@ -2,6 +2,7 @@ import {
 	App,
 	FuzzySuggestModal,
 	ItemView,
+	Modal,
 	Notice,
 	TFile,
 	TFolder,
@@ -17,6 +18,7 @@ import { listRecipeLibrary } from "../grocery/library";
 import { setRecipeSelection } from "../grocery/selection";
 import {
 	emptyGrid,
+	MealPlanEntry,
 	MealPlanGrid,
 	occurrencesToGrid,
 	parseMealPlanContents,
@@ -216,7 +218,7 @@ export class MealPlannerView extends ItemView {
 			});
 		}
 
-		this.addToListBtn.disabled = total === 0;
+		this.addToListBtn.disabled = this.uniquePlannedFiles().length === 0;
 	}
 
 	private renderDay(
@@ -243,16 +245,17 @@ export class MealPlannerView extends ItemView {
 				text: slot,
 			});
 
-			const files = this.grid.cells[day]?.[slot] ?? [];
+			const entries = this.grid.cells[day]?.[slot] ?? [];
 			const list = slotEl.createDiv({ cls: "pantry-planner-chips" });
 			this.wireSlotDropTarget(list, day, slot);
-			files.forEach((file, index) => {
-				this.renderChip(list, day, slot, file, index);
+			entries.forEach((entry, index) => {
+				this.renderChip(list, day, slot, entry, index);
 			});
 
-			const add = list.createEl("button", {
+			const actions = list.createDiv({ cls: "pantry-planner-add" });
+			const add = actions.createEl("button", {
 				cls: "pantry-planner-empty",
-				text: files.length === 0 ? "Add a recipe" : "Add another",
+				text: entries.length === 0 ? "Add a recipe" : "Add another",
 				attr: {
 					type: "button",
 					"aria-label": `Add a recipe to ${day} ${slot}`,
@@ -260,6 +263,17 @@ export class MealPlannerView extends ItemView {
 			});
 			add.addEventListener("click", () => {
 				this.openPicker(day, slot);
+			});
+			const addNote = actions.createEl("button", {
+				cls: "pantry-planner-empty",
+				text: "Add a note",
+				attr: {
+					type: "button",
+					"aria-label": `Add a note to ${day} ${slot}`,
+				},
+			});
+			addNote.addEventListener("click", () => {
+				this.openNoteModal(day, slot);
 			});
 		}
 	}
@@ -270,11 +284,17 @@ export class MealPlannerView extends ItemView {
 		}).open();
 	}
 
+	private openNoteModal(day: string, slot: string): void {
+		new PlanNoteModal(this.app, (text) => {
+			void this.addNote(day, slot, text);
+		}).open();
+	}
+
 	private renderChip(
 		parent: HTMLElement,
 		day: string,
 		slot: string,
-		file: TFile,
+		entry: MealPlanEntry,
 		index: number,
 	): void {
 		const chip = parent.createDiv({ cls: "pantry-planner-chip" });
@@ -293,15 +313,24 @@ export class MealPlannerView extends ItemView {
 			chip.removeClass("is-dragging");
 		});
 
-		const link = chip.createEl("a", {
-			cls: "pantry-planner-chip-link",
-			text: file.basename,
-			href: "#",
-		});
-		link.addEventListener("click", (evt) => {
-			evt.preventDefault();
-			void this.app.workspace.getLeaf(false).openFile(file);
-		});
+		if (entry.kind === "recipe") {
+			const link = chip.createEl("a", {
+				cls: "pantry-planner-chip-link",
+				text: entry.file.basename,
+				href: "#",
+			});
+			link.addEventListener("click", (evt) => {
+				evt.preventDefault();
+				void this.app.workspace.getLeaf(false).openFile(entry.file);
+			});
+		} else {
+			chip.addClass("is-note");
+			chip.createSpan({
+				cls: "pantry-planner-chip-note",
+				text: entry.text,
+				attr: { title: entry.text },
+			});
+		}
 		const remove = chip.createEl("button", {
 			cls: "clickable-icon pantry-planner-chip-remove",
 			attr: { type: "button", "aria-label": "Remove" },
@@ -373,8 +402,9 @@ export class MealPlannerView extends ItemView {
 		const byPath = new Map<string, TFile>();
 		for (const day of this.grid.days) {
 			for (const slot of this.grid.slots) {
-				for (const file of this.grid.cells[day]?.[slot] ?? []) {
-					byPath.set(file.path, file);
+				for (const entry of this.grid.cells[day]?.[slot] ?? []) {
+					if (entry.kind !== "recipe") continue;
+					byPath.set(entry.file.path, entry.file);
 				}
 			}
 		}
@@ -415,7 +445,15 @@ export class MealPlannerView extends ItemView {
 		slot: string,
 		file: TFile,
 	): Promise<void> {
-		this.grid.cells[day]?.[slot]?.push(file);
+		this.grid.cells[day]?.[slot]?.push({ kind: "recipe", file });
+		await this.persist();
+		this.render();
+	}
+
+	private async addNote(day: string, slot: string, text: string): Promise<void> {
+		const note = text.replace(/\s+/g, " ").trim().slice(0, 240);
+		if (!note) return;
+		this.grid.cells[day]?.[slot]?.push({ kind: "note", text: note });
 		await this.persist();
 		this.render();
 	}
@@ -443,9 +481,9 @@ export class MealPlannerView extends ItemView {
 		const target = this.grid.cells[toDay]?.[toSlot];
 		if (!source || !target) return;
 		if (index < 0 || index >= source.length) return;
-		const [file] = source.splice(index, 1);
-		if (!file) return;
-		target.push(file);
+		const [entry] = source.splice(index, 1);
+		if (!entry) return;
+		target.push(entry);
 		await this.persist();
 		this.render();
 	}
@@ -545,5 +583,51 @@ class RecipePickerModal extends FuzzySuggestModal<TFile> {
 	onChooseItem(file: TFile): void {
 		this.onChoose(file);
 		new Notice(`Added "${file.basename}" to the plan.`);
+	}
+}
+
+/** Single-line meal note, such as eating out, with no recipe behind it. */
+class PlanNoteModal extends Modal {
+	constructor(
+		app: App,
+		private readonly onSubmit: (text: string) => void,
+	) {
+		super(app);
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		this.titleEl.setText("Add a note");
+		contentEl.createEl("p", {
+			text: "A note stays on the plan and is left off the grocery list.",
+		});
+		const input = contentEl.createEl("input", {
+			cls: "pantry-plan-note-input",
+			attr: { type: "text", placeholder: "Going out to dinner" },
+		});
+		const actions = contentEl.createDiv({ cls: "pantry-modal-actions" });
+		actions
+			.createEl("button", { text: "Cancel", attr: { type: "button" } })
+			.addEventListener("click", () => this.close());
+		const add = actions.createEl("button", {
+			text: "Add note",
+			cls: "mod-cta",
+			attr: { type: "button" },
+		});
+		const submit = (): void => {
+			const text = input.value.trim();
+			if (!text) return;
+			this.onSubmit(text);
+			this.close();
+		};
+		add.addEventListener("click", submit);
+		input.addEventListener("keydown", (evt) => {
+			if (evt.key === "Enter") {
+				evt.preventDefault();
+				submit();
+			}
+		});
+		window.setTimeout(() => input.focus(), 0);
 	}
 }

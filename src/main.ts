@@ -38,12 +38,28 @@ import {
 import { inventoryTypeMatches } from "./grocery/inventory-library";
 import { recipeTypeMatches } from "./parser/recipe";
 import {
+	applyEffectiveAisle,
+	categoriesFromNames,
+	emptyAisleLayout,
+	ensureShop,
+	normalizeAisleLocal,
+	parseAisleLayout,
+	parseCategoryLines,
+	readAisleLayoutFile,
+	resolveAisleLayoutPath,
+	serializeAisleLayout,
+	writeAisleLayoutFile,
+} from "./grocery/aisle-layout";
+import {
+	DEFAULT_AISLE_LAYOUT_PATH,
+	DEFAULT_AISLE_SHOP,
 	DEFAULT_CATEGORY_ORDER,
 	DEFAULT_MEAL_PLAN_SLOT_SELECTION,
 	DEFAULT_SETTINGS,
 	normalizeMealPlanSlots,
 	PantrySettings,
 } from "./settings";
+import { CategoryOverride } from "./types";
 import { PantrySettingsTab } from "./ui/settings-tab";
 import { MealPlannerView, VIEW_TYPE_MEAL_PLANNER } from "./ui/planner-view";
 import { RecipeView, VIEW_TYPE_RECIPE } from "./ui/recipe-view";
@@ -84,6 +100,11 @@ export default class PantryPlugin extends Plugin {
 	 * vault modify events so a self-write does not trigger a redundant reload.
 	 */
 	private inventoryStateWriteToken: string | null = null;
+	/**
+	 * Last content we wrote to the aisle-layout file. Used to ignore our own
+	 * vault modify events so a self-write does not trigger a redundant reload.
+	 */
+	private aisleLayoutWriteToken: string | null = null;
 	/** Leftover pre-file-based items awaiting import; state-file writes are held until it's cleared. */
 	private pendingLegacyInventory: LegacyInventory | null = null;
 
@@ -96,6 +117,7 @@ export default class PantryPlugin extends Plugin {
 			this.settings.inventoryStatePath,
 		);
 		await this.loadInventoryState();
+		await this.loadAisleLayout();
 
 		const sink: SaveSink = makeSaveSink(this);
 		this.manager = new GroceryListManager(this.app, sink);
@@ -255,6 +277,15 @@ export default class PantryPlugin extends Plugin {
 				inventoryManager: this.inventoryManager,
 				reloadShoppingState: () => this.loadShoppingState(),
 				reloadInventoryState: () => this.loadInventoryState(),
+				setActiveShop: (name) => this.setActiveShop(name),
+				setSharedCategoriesFromLines: (text) =>
+					this.setSharedCategoriesFromLines(text),
+				setSharedOverrides: (overrides) => this.setSharedOverrides(overrides),
+				setLocalCategoriesFromLines: (text) =>
+					this.setLocalCategoriesFromLines(text),
+				setLocalOverrides: (overrides) => this.setLocalOverrides(overrides),
+				resetSharedCategories: () => this.resetSharedCategories(),
+				reloadAisleLayout: () => this.loadAisleLayout(),
 			}),
 		);
 
@@ -293,6 +324,10 @@ export default class PantryPlugin extends Plugin {
 					void this.inventoryManager.refresh();
 					return;
 				}
+				if (this.isAisleLayoutFile(file)) {
+					void this.loadAisleLayout();
+					return;
+				}
 				this.forgetLeafOpenPath(file.path);
 				refresh();
 				refreshInventory();
@@ -310,6 +345,13 @@ export default class PantryPlugin extends Plugin {
 				if (this.isInventoryStatePath(oldPath)) {
 					if (file instanceof TFile) {
 						this.settings.inventoryStatePath = file.path;
+						void this.saveSettings();
+					}
+					return;
+				}
+				if (this.isAisleLayoutPath(oldPath)) {
+					if (file instanceof TFile) {
+						this.settings.aisleLayoutPath = file.path;
 						void this.saveSettings();
 					}
 					return;
@@ -334,6 +376,10 @@ export default class PantryPlugin extends Plugin {
 					void this.onInventoryStateFileModified(file);
 					return;
 				}
+				if (this.isAisleLayoutFile(file)) {
+					void this.onAisleLayoutFileModified(file);
+					return;
+				}
 			}),
 		);
 		this.registerEvent(
@@ -345,6 +391,10 @@ export default class PantryPlugin extends Plugin {
 				}
 				if (this.isInventoryStateFile(file)) {
 					void this.onInventoryStateFileModified(file);
+					return;
+				}
+				if (this.isAisleLayoutFile(file)) {
+					void this.onAisleLayoutFileModified(file);
 					return;
 				}
 			}),
@@ -886,6 +936,186 @@ export default class PantryPlugin extends Plugin {
 		window.clearTimeout(this.autoOpenInventoryTimer);
 		this.autoOpenInventoryTimer = null;
 	}
+
+	/**
+	 * Load the shared aisle layout from the vault. The first launch copies
+	 * the category order out of plugin settings into that file. Later loads
+	 * trust the file and layer this device's local additions on top.
+	 */
+	async loadAisleLayout(): Promise<void> {
+		const path = resolveAisleLayoutPath(this.settings.aisleLayoutPath);
+		this.settings.aisleLayoutPath = path;
+		const shopName = this.settings.activeShop.trim() || DEFAULT_AISLE_SHOP;
+		this.settings.activeShop = shopName;
+		const read = await readAisleLayoutFile(this.app, path);
+		if (read.missing) {
+			const hadShops = Object.keys(this.settings.aisleLayout.shops).length > 0;
+			if (!hadShops) {
+				this.settings.aisleLayout = {
+					shops: {
+						[shopName]: {
+							categories: categoriesFromNames(this.settings.categoryOrder),
+							overrides: this.settings.categoryOverrides.map((override) => ({
+								...override,
+							})),
+						},
+					},
+				};
+				new Notice(
+					`Pantry: aisle order is now saved in "${path}" so it syncs with this vault.`,
+				);
+			}
+			await this.saveAisleLayout();
+		} else if (read.layout) {
+			this.settings.aisleLayout = read.layout;
+		} else {
+			new Notice(
+				"Pantry: couldn't read the aisle layout file. The grocery list is using the order already loaded.",
+			);
+			if (!this.settings.aisleLayout.shops[shopName]) {
+				this.settings.aisleLayout = {
+					shops: {
+						[shopName]: {
+							categories: categoriesFromNames(this.settings.categoryOrder),
+							overrides: this.settings.categoryOverrides.map((override) => ({
+								...override,
+							})),
+						},
+					},
+				};
+			}
+		}
+		applyEffectiveAisle(this.settings);
+		await this.saveSettings();
+		await this.manager?.refresh();
+	}
+
+	/** Write the shared layout. Device-local additions stay in data.json. */
+	async saveAisleLayout(): Promise<void> {
+		const path = resolveAisleLayoutPath(this.settings.aisleLayoutPath);
+		this.settings.aisleLayoutPath = path;
+		const content = serializeAisleLayout(this.settings.aisleLayout);
+		this.aisleLayoutWriteToken = content;
+		await writeAisleLayoutFile(this.app, path, this.settings.aisleLayout);
+	}
+
+	/** Switch the device's shop. A new name starts as a copy of the previous shop. */
+	async setActiveShop(name: string): Promise<void> {
+		const shop = name.trim() || DEFAULT_AISLE_SHOP;
+		if (shop === this.settings.activeShop && this.settings.aisleLayout.shops[shop]) {
+			return;
+		}
+		const previous = this.settings.aisleLayout.shops[this.settings.activeShop];
+		this.settings.activeShop = shop;
+		const created = !this.settings.aisleLayout.shops[shop];
+		ensureShop(this.settings.aisleLayout, shop, previous);
+		applyEffectiveAisle(this.settings);
+		if (created) await this.saveAisleLayout();
+		await this.saveSettings();
+		await this.manager.refresh();
+	}
+
+	/** Replace the active shop's shared aisles from the settings textarea. */
+	async setSharedCategoriesFromLines(text: string): Promise<void> {
+		const shop = ensureShop(
+			this.settings.aisleLayout,
+			this.settings.activeShop,
+			this.settings.aisleLayout.shops[this.settings.activeShop],
+		);
+		shop.categories = parseCategoryLines(text);
+		applyEffectiveAisle(this.settings);
+		await this.saveAisleLayout();
+		await this.saveSettings();
+		this.manager.trigger("changed");
+	}
+
+	/** Replace the active shop's shared name overrides. */
+	async setSharedOverrides(overrides: CategoryOverride[]): Promise<void> {
+		const shop = ensureShop(
+			this.settings.aisleLayout,
+			this.settings.activeShop,
+		);
+		shop.overrides = overrides;
+		applyEffectiveAisle(this.settings);
+		await this.saveAisleLayout();
+		await this.saveSettings();
+		await this.manager.refresh();
+	}
+
+	/** Replace this device's extra aisles for the active shop. */
+	async setLocalCategoriesFromLines(text: string): Promise<void> {
+		const shopName = this.settings.activeShop;
+		const categories = parseCategoryLines(text);
+		const current = this.settings.aisleLocal.shops[shopName] ?? {
+			categories: [],
+			overrides: [],
+		};
+		if (categories.length === 0 && current.overrides.length === 0) {
+			delete this.settings.aisleLocal.shops[shopName];
+		} else {
+			this.settings.aisleLocal.shops[shopName] = {
+				categories,
+				overrides: current.overrides,
+			};
+		}
+		applyEffectiveAisle(this.settings);
+		await this.saveSettings();
+		this.manager.trigger("changed");
+	}
+
+	/** Replace this device's name overrides for the active shop. */
+	async setLocalOverrides(overrides: CategoryOverride[]): Promise<void> {
+		const shopName = this.settings.activeShop;
+		const current = this.settings.aisleLocal.shops[shopName] ?? {
+			categories: [],
+			overrides: [],
+		};
+		if (overrides.length === 0 && current.categories.length === 0) {
+			delete this.settings.aisleLocal.shops[shopName];
+		} else {
+			this.settings.aisleLocal.shops[shopName] = {
+				categories: current.categories,
+				overrides,
+			};
+		}
+		applyEffectiveAisle(this.settings);
+		await this.saveSettings();
+		await this.manager.refresh();
+	}
+
+	/** Restore the active shop's shared aisle order to the built-in list. */
+	async resetSharedCategories(): Promise<void> {
+		const shop = ensureShop(
+			this.settings.aisleLayout,
+			this.settings.activeShop,
+		);
+		shop.categories = categoriesFromNames(DEFAULT_CATEGORY_ORDER);
+		applyEffectiveAisle(this.settings);
+		await this.saveAisleLayout();
+		await this.saveSettings();
+		await this.manager.refresh();
+	}
+
+	private async onAisleLayoutFileModified(file: TFile): Promise<void> {
+		const raw = await this.app.vault.cachedRead(file);
+		if (raw === this.aisleLayoutWriteToken) return;
+		const parsed = parseAisleLayout(raw);
+		if (!parsed) {
+			console.error(`pantry: failed to parse aisle layout at ${file.path}`);
+			return;
+		}
+		this.settings.aisleLayout = parsed;
+		applyEffectiveAisle(this.settings);
+		await this.manager.refresh();
+	}
+
+	private isAisleLayoutFile(file: TAbstractFile): boolean {
+		return this.isAisleLayoutPath(file.path);
+	}
+
+	private isAisleLayoutPath(path: string): boolean {
+		return path === resolveAisleLayoutPath(this.settings.aisleLayoutPath);
+	}
 }
 
 function makeSaveSink(plugin: PantryPlugin): SaveSink {
@@ -911,6 +1141,8 @@ function makeInventorySaveSink(plugin: PantryPlugin): InventorySaveSink {
 function settingsForDisk(settings: PantrySettings): PantrySettings {
 	return {
 		...settings,
+		aisleLayout: emptyAisleLayout(),
+		aisleCategories: [],
 		state: emptyShoppingState(),
 		inventoryState: emptyInventoryState(),
 	};
@@ -993,6 +1225,17 @@ function mergeSettings(raw: Partial<PantrySettings> | null): PantrySettings {
 		categoryOverrides: Array.isArray(raw.categoryOverrides)
 			? raw.categoryOverrides
 			: base.categoryOverrides,
+		aisleLayoutPath:
+			typeof raw.aisleLayoutPath === "string" && raw.aisleLayoutPath.trim()
+				? raw.aisleLayoutPath.trim()
+				: DEFAULT_AISLE_LAYOUT_PATH,
+		activeShop:
+			typeof raw.activeShop === "string" && raw.activeShop.trim()
+				? raw.activeShop.trim()
+				: DEFAULT_AISLE_SHOP,
+		aisleLayout: emptyAisleLayout(),
+		aisleLocal: normalizeAisleLocal(raw.aisleLocal),
+		aisleCategories: [],
 		recipeFolders: Array.isArray(raw.recipeFolders)
 			? raw.recipeFolders
 			: base.recipeFolders,

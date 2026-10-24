@@ -12,6 +12,34 @@ export const DEFAULT_SHOPPING_STATE_PATH = "Pantry/shopping-state.json";
 /** Default vault-relative path for cross-device inventory state. */
 export const DEFAULT_INVENTORY_STATE_PATH = "Pantry/inventory-state.json";
 
+/** Default vault-relative path for the shared per-shop aisle layout. */
+export const DEFAULT_AISLE_LAYOUT_PATH = "Pantry/aisle-layout.json";
+
+/** Shop name used when the device has not chosen one. */
+export const DEFAULT_AISLE_SHOP = "Default";
+
+/** One aisle in a shop layout. `parent` nests it under another aisle. */
+export interface AisleCategory {
+	name: string;
+	parent?: string;
+}
+
+/** Shared or device-local aisles and name overrides for a single shop. */
+export interface AisleShop {
+	categories: AisleCategory[];
+	overrides: CategoryOverride[];
+}
+
+/** Shared layout file: one entry per shop. The active shop is device-local. */
+export interface AisleLayout {
+	shops: Record<string, AisleShop>;
+}
+
+/** Device-local additions, keyed by shop name. */
+export interface AisleLocalState {
+	shops: Record<string, AisleShop>;
+}
+
 export interface PantrySettings {
 	/** Folder paths (vault-relative) to scan for recipes. Empty array = entire vault. */
 	recipeFolders: string[];
@@ -38,10 +66,23 @@ export interface PantrySettings {
 	checkedItemDisplay: CheckedItemDisplay;
 	/** Where each item's category comes from. */
 	categorySource: CategorySource;
-	/** Order of categories. Unknown categories appear at the end alphabetically. */
+	/**
+	 * Effective aisle order for the active shop: shared layout, then this
+	 * device's local additions. Unknown categories appear after these.
+	 */
 	categoryOrder: string[];
-	/** User-defined category overrides applied before the built-in categorizer. */
+	/** Effective overrides: this device's local matches, then the shared layout. */
 	categoryOverrides: CategoryOverride[];
+	/** Vault-relative JSON file for shared per-shop aisle orders. */
+	aisleLayoutPath: string;
+	/** Shop whose aisle order this device uses. Not written to the layout file. */
+	activeShop: string;
+	/** Shared per-shop aisle orders. Persisted to {@link aisleLayoutPath}, not data.json. */
+	aisleLayout: AisleLayout;
+	/** Device-local aisles and overrides, keyed by shop. Never written to the layout file. */
+	aisleLocal: AisleLocalState;
+	/** Effective categories for the active shop, including parent links for nesting. */
+	aisleCategories: AisleCategory[];
 	/** Auto-collapse a section when its last unchecked item gets checked. */
 	autoCollapseCompleted: boolean;
 	/** Auto-open notes whose recipe-type frontmatter matches `recipeTypeValue` in the recipe view. */
@@ -328,6 +369,11 @@ export const DEFAULT_SETTINGS: PantrySettings = {
 	categorySource: "dictionary",
 	categoryOrder: [...DEFAULT_CATEGORY_ORDER],
 	categoryOverrides: [],
+	aisleLayoutPath: DEFAULT_AISLE_LAYOUT_PATH,
+	activeShop: DEFAULT_AISLE_SHOP,
+	aisleLayout: { shops: {} },
+	aisleLocal: { shops: {} },
+	aisleCategories: [],
 	autoCollapseCompleted: true,
 	autoOpenRecipeView: true,
 	recipeTypeProperty: "type",

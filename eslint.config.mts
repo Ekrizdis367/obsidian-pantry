@@ -38,6 +38,8 @@ export default defineConfig(
 		files: ["tests/**/*.ts"],
 		rules: {
 			"import/no-nodejs-modules": "off",
+			"obsidianmd/no-nodejs-modules": "off",
+			"obsidianmd/prefer-window-timers": "off",
 			"@typescript-eslint/no-floating-promises": "off",
 		},
 	},

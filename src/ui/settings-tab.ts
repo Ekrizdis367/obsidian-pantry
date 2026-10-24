@@ -6,16 +6,21 @@ import {
 	TextAreaComponent,
 	type SettingDefinitionItem,
 } from "obsidian";
+import { formatCategoryLines } from "../grocery/aisle-layout";
+import { InventoryManager } from "../grocery/inventory-manager";
 import { GroceryListManager } from "../grocery/manager";
 import {
 	formatStatusValuesInput,
 	parseStatusValuesInput,
 } from "../grocery/meal-plan-fill";
+import { RECIPE_TEMPLATE_TOKEN_HINT } from "../importer/default-template";
 import {
 	DEFAULT_GI_DICTIONARY,
 	validateGiDictionary,
 } from "../parser/glycemic";
 import {
+	DEFAULT_AISLE_LAYOUT_PATH,
+	DEFAULT_AISLE_SHOP,
 	DEFAULT_AUTO_FILL_STATUS_VALUES,
 	DEFAULT_CATEGORY_ORDER,
 	DEFAULT_INVENTORY_STATE_PATH,
@@ -24,8 +29,7 @@ import {
 	normalizeMealPlanSlots,
 	PantrySettings,
 } from "../settings";
-import { RECIPE_TEMPLATE_TOKEN_HINT } from "../importer/default-template";
-import { InventoryManager } from "../grocery/inventory-manager";
+import { CategoryOverride } from "../types";
 
 export interface SettingsHost {
 	settings: PantrySettings;
@@ -36,6 +40,20 @@ export interface SettingsHost {
 	reloadShoppingState(): Promise<void>;
 	/** Reload inventory state from the vault (after the path setting changes). */
 	reloadInventoryState(): Promise<void>;
+	/** Switch which shop's shared aisle order this device uses. */
+	setActiveShop(name: string): Promise<void>;
+	/** Replace the active shop's shared aisles from textarea lines. */
+	setSharedCategoriesFromLines(text: string): Promise<void>;
+	/** Replace the active shop's shared name overrides. */
+	setSharedOverrides(overrides: CategoryOverride[]): Promise<void>;
+	/** Replace this device's extra aisles for the active shop. */
+	setLocalCategoriesFromLines(text: string): Promise<void>;
+	/** Replace this device's name overrides for the active shop. */
+	setLocalOverrides(overrides: CategoryOverride[]): Promise<void>;
+	/** Restore the active shop's shared aisle order to the built-in list. */
+	resetSharedCategories(): Promise<void>;
+	/** Reload the shared layout after its vault path changes. */
+	reloadAisleLayout(): Promise<void>;
 }
 
 /**
@@ -315,18 +333,38 @@ export class PantrySettingsTab extends PluginSettingTab {
 						render: (setting) => this.wireCategorySource(setting),
 					},
 					{
+						name: "Active shop",
+						desc: "Which shop's aisle order this device uses. Other devices can pick a different shop. A new name starts as a copy of the shop you were just editing.",
+						render: (setting) => this.wireActiveShop(setting),
+					},
+					{
+						name: "Aisle layout file",
+						desc: "Vault-relative JSON file for shared shop aisle orders and category overrides. Stored in the vault so it syncs across devices with your notes.",
+						render: (setting) => this.wireAisleLayoutPath(setting),
+					},
+					{
 						name: "Category order",
-						desc: "Order in which categories appear, one per line. Unknown categories appear after these in alphabetical order.",
+						desc: "Shared aisle order for the active shop, one per line. Write a subcategory as 'Parent / Child'. Saved to the aisle layout file. Unknown categories appear after these, alphabetically.",
 						render: (setting) => this.wireCategoryOrder(setting),
 					},
 					{
 						name: "Category overrides",
-						desc: "One per line as 'match: category'. Matches are lowercase substrings of the ingredient name.",
+						desc: "Shared rules for the active shop, one per line as 'match: category'. Matches are lowercase substrings of the ingredient name. Saved to the aisle layout file.",
 						render: (setting) => this.wireCategoryOverrides(setting),
 					},
 					{
+						name: "Local categories",
+						desc: "Extra aisles for this device only, one per line, including 'Parent / Child'. Appended after the shared order and kept out of the synced layout file.",
+						render: (setting) => this.wireLocalCategories(setting),
+					},
+					{
+						name: "Local category overrides",
+						desc: "Device-only 'match: category' lines for the active shop. A local match wins over the same match in the shared layout.",
+						render: (setting) => this.wireLocalOverrides(setting),
+					},
+					{
 						name: "Reset categories",
-						desc: "Restore the default category order.",
+						desc: "Restore the active shop's shared category order to the built-in list. Local additions on this device are kept.",
 						render: (setting) => this.wireResetCategories(setting),
 					},
 				],
@@ -895,17 +933,54 @@ export class PantrySettingsTab extends PluginSettingTab {
 		);
 	}
 
+	private wireActiveShop(setting: Setting): void {
+		setting.addText((text) => {
+			text
+				.setPlaceholder(DEFAULT_AISLE_SHOP)
+				.setValue(this.host.settings.activeShop);
+			const commit = (): void => {
+				const next = text.getValue().trim() || DEFAULT_AISLE_SHOP;
+				if (next === this.host.settings.activeShop) return;
+				void this.host.setActiveShop(next).then(() => this.reloadSettings());
+			};
+			text.inputEl.addEventListener("blur", commit);
+			text.inputEl.addEventListener("keydown", (evt) => {
+				if (evt.key !== "Enter") return;
+				evt.preventDefault();
+				commit();
+			});
+		});
+	}
+
+	private wireAisleLayoutPath(setting: Setting): void {
+		setting.addText((text) => {
+			text
+				.setPlaceholder(DEFAULT_AISLE_LAYOUT_PATH)
+				.setValue(this.host.settings.aisleLayoutPath);
+			const commit = (): void => {
+				const next = text.getValue().trim() || DEFAULT_AISLE_LAYOUT_PATH;
+				if (next === this.host.settings.aisleLayoutPath) return;
+				this.host.settings.aisleLayoutPath = next;
+				void this.host.saveSettings().then(async () => {
+					await this.host.reloadAisleLayout();
+					this.reloadSettings();
+				});
+			};
+			text.inputEl.addEventListener("blur", commit);
+			text.inputEl.addEventListener("keydown", (evt) => {
+				if (evt.key !== "Enter") return;
+				evt.preventDefault();
+				commit();
+			});
+		});
+	}
+
 	private wireCategoryOrder(setting: Setting): void {
 		setting.addTextArea((ta) => {
 			ta.setPlaceholder(DEFAULT_CATEGORY_ORDER.join("\n"));
-			ta.setValue(this.host.settings.categoryOrder.join("\n"));
+			ta.setValue(formatCategoryLines(this.sharedShopCategories()));
 			ta.onChange(async (value) => {
-				this.host.settings.categoryOrder = value
-					.split(/\r?\n/)
-					.map((s) => s.trim())
-					.filter(Boolean);
-				await this.host.saveSettings();
-				this.host.manager.trigger("changed");
+				await this.host.setSharedCategoriesFromLines(value);
 			});
 			ta.inputEl.rows = 6;
 		});
@@ -914,46 +989,74 @@ export class PantrySettingsTab extends PluginSettingTab {
 	private wireCategoryOverrides(setting: Setting): void {
 		setting.addTextArea((ta) => {
 			ta.setPlaceholder("Match: category, one per line");
-			ta.setValue(
-				this.host.settings.categoryOverrides
-					.map((o) => `${o.match}: ${o.category}`)
-					.join("\n"),
-			);
+			ta.setValue(formatOverrideLines(this.sharedShopOverrides()));
 			ta.onChange(async (value) => {
-				const overrides = value
-					.split(/\r?\n/)
-					.map((line) => line.trim())
-					.filter(Boolean)
-					.map((line) => {
-						const idx = line.indexOf(":");
-						if (idx === -1) return null;
-						const match = line.slice(0, idx).trim();
-						const category = line.slice(idx + 1).trim();
-						if (!match || !category) return null;
-						return { match, category };
-					})
-					.filter(
-						(v): v is { match: string; category: string } =>
-							v !== null,
-					);
-				this.host.settings.categoryOverrides = overrides;
-				await this.host.saveSettings();
-				this.host.manager.trigger("changed");
+				await this.host.setSharedOverrides(parseOverrideLines(value));
 			});
 			ta.inputEl.rows = 6;
+		});
+	}
+
+	private wireLocalCategories(setting: Setting): void {
+		setting.addTextArea((ta) => {
+			ta.setPlaceholder("One aisle per line");
+			const local = this.host.settings.aisleLocal.shops[this.host.settings.activeShop];
+			ta.setValue(formatCategoryLines(local?.categories ?? []));
+			ta.onChange(async (value) => {
+				await this.host.setLocalCategoriesFromLines(value);
+			});
+			ta.inputEl.rows = 4;
+		});
+	}
+
+	private wireLocalOverrides(setting: Setting): void {
+		setting.addTextArea((ta) => {
+			ta.setPlaceholder("Match: category, one per line");
+			const local = this.host.settings.aisleLocal.shops[this.host.settings.activeShop];
+			ta.setValue(formatOverrideLines(local?.overrides ?? []));
+			ta.onChange(async (value) => {
+				await this.host.setLocalOverrides(parseOverrideLines(value));
+			});
+			ta.inputEl.rows = 4;
 		});
 	}
 
 	private wireResetCategories(setting: Setting): void {
 		setting.addButton((btn) =>
 			btn.setButtonText("Reset").onClick(async () => {
-				this.host.settings.categoryOrder = [...DEFAULT_CATEGORY_ORDER];
-				await this.host.saveSettings();
+				await this.host.resetSharedCategories();
 				this.reloadSettings();
-				this.host.manager.trigger("changed");
 			}),
 		);
 	}
+
+	private sharedShopCategories(): { name: string; parent?: string }[] {
+		return this.host.settings.aisleLayout.shops[this.host.settings.activeShop]?.categories ?? [];
+	}
+
+	private sharedShopOverrides(): CategoryOverride[] {
+		return this.host.settings.aisleLayout.shops[this.host.settings.activeShop]?.overrides ?? [];
+	}
+}
+
+function formatOverrideLines(overrides: readonly CategoryOverride[]): string {
+	return overrides.map((override) => `${override.match}: ${override.category}`).join("\n");
+}
+
+function parseOverrideLines(value: string): CategoryOverride[] {
+	return value
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.map((line) => {
+			const idx = line.indexOf(":");
+			if (idx === -1) return null;
+			const match = line.slice(0, idx).trim();
+			const category = line.slice(idx + 1).trim();
+			if (!match || !category) return null;
+			return { match, category };
+		})
+		.filter((override): override is CategoryOverride => override !== null);
 }
 
 function renderErrors(container: HTMLElement, errors: readonly string[]): void {

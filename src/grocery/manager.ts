@@ -96,6 +96,7 @@ export class GroceryListManager extends Events {
 				const planCount = new Map<string, number>();
 				const fileByPath = new Map<string, TFile>();
 				for (const occ of plan.occurrences) {
+					if (!occ.file) continue;
 					planCount.set(
 						occ.file.path,
 						(planCount.get(occ.file.path) ?? 0) + 1,
@@ -221,10 +222,14 @@ export class GroceryListManager extends Events {
 		await this.sink.save();
 		const parsed = await this.readMealPlanOccurrences();
 		await this.refresh();
-		const unique = new Set(parsed.occurrences.map((o) => o.file.path));
+		const unique = new Set(
+			parsed.occurrences
+				.map((o) => o.file?.path)
+				.filter((path): path is string => Boolean(path)),
+		);
 		return {
 			recipes: unique.size,
-			occurrences: parsed.occurrences.length,
+			occurrences: parsed.occurrences.filter((o) => o.file).length,
 			unresolved: parsed.unresolved.length,
 		};
 	}

@@ -20,6 +20,7 @@ import {
 	matchingAllergens,
 	readAllergens,
 } from "../parser/recipe-meta";
+import { aisleParentOf } from "../grocery/aisle-layout";
 import { CheckedItemDisplay, PantrySettings } from "../settings";
 import { GroceryItem, OneOffItem, InventoryItem } from "../types";
 import { toTitleCase } from "../utils/text";
@@ -262,16 +263,46 @@ export class GroceryListView extends ItemView {
 
 		const settings = this.deps.getSettings();
 		const grouped = groupForDisplay(items, settings);
+		const nest = settings.grouping === "category";
+		const rendered = new Set<string>();
+		let collapsedParent = "";
 		for (const [groupName, groupItems] of grouped) {
 			if (groupItems.length === 0) continue;
-			this.renderGroup(groupName, groupItems, oneOffs);
+			const parent = nest
+				? aisleParentOf(settings.aisleCategories, groupName)
+				: null;
+			if (
+				collapsedParent &&
+				parent &&
+				parent.toLowerCase() === collapsedParent.toLowerCase()
+			) {
+				continue;
+			}
+			collapsedParent = "";
+			if (parent && !rendered.has(parent.toLowerCase())) {
+				this.renderAisleParent(parent);
+				rendered.add(parent.toLowerCase());
+			}
+			const collapsed = this.deps.manager.isGroupCollapsed(groupName);
+			this.renderGroup(groupName, groupItems, oneOffs, Boolean(parent));
+			rendered.add(groupName.toLowerCase());
+			if (!parent && collapsed) collapsedParent = groupName;
 		}
+	}
+
+	/** Label for a parent aisle that has nested sections but no items of its own. */
+	private renderAisleParent(name: string): void {
+		this.listEl.createDiv({
+			cls: "pantry-aisle-parent",
+			text: name,
+		});
 	}
 
 	private renderGroup(
 		groupName: string,
 		groupItems: GroceryItem[],
 		oneOffs: OneOffItem[],
+		nested: boolean,
 	): void {
 		const collapsed = this.deps.manager.isGroupCollapsed(groupName);
 		const checkedCount = groupItems.filter((i) => i.checked).length;
@@ -279,6 +310,7 @@ export class GroceryListView extends ItemView {
 		const allChecked = totalCount > 0 && checkedCount === totalCount;
 
 		const section = this.listEl.createDiv({ cls: "pantry-group" });
+		if (nested) section.addClass("is-nested");
 		if (collapsed) section.addClass("is-collapsed");
 		if (allChecked) section.addClass("is-complete");
 
