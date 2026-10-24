@@ -1,3 +1,4 @@
+import { decodeHtmlEntities } from "../utils/text";
 import { ImportedRecipe } from "./types";
 
 const JSON_LD_RE =
@@ -130,7 +131,7 @@ function readIngredients(value: unknown): string[] {
 	if (!value) return [];
 	if (typeof value === "string") {
 		const trimmed = value.trim();
-		return trimmed ? [trimmed] : [];
+		return trimmed ? [decodeHtmlEntities(trimmed)] : [];
 	}
 	if (!Array.isArray(value)) return [];
 	const out: string[] = [];
@@ -144,7 +145,7 @@ function readIngredients(value: unknown): string[] {
 function readInstructions(value: unknown): string[] {
 	if (!value) return [];
 	if (typeof value === "string") {
-		return value
+		return decodeHtmlEntities(value)
 			.split(/\r?\n/)
 			.map((line) => line.trim())
 			.filter(Boolean);
@@ -154,7 +155,7 @@ function readInstructions(value: unknown): string[] {
 	const out: string[] = [];
 	for (const entry of value) {
 		if (typeof entry === "string") {
-			const text = entry.trim();
+			const text = decodeHtmlEntities(entry).trim();
 			if (text) out.push(text);
 			continue;
 		}
@@ -192,7 +193,7 @@ function readType(value: unknown): string {
 }
 
 function readImage(value: unknown): string {
-	if (typeof value === "string") return value.trim();
+	if (typeof value === "string") return decodeHtmlEntities(value).trim();
 	if (Array.isArray(value)) {
 		for (const entry of value) {
 			const url = readImage(entry);
@@ -209,7 +210,7 @@ function readImage(value: unknown): string {
 
 function readText(value: unknown): string | null {
 	if (typeof value === "string") {
-		const trimmed = value.trim();
+		const trimmed = decodeHtmlEntities(value).trim();
 		return trimmed || null;
 	}
 	if (typeof value === "number" && Number.isFinite(value)) {
