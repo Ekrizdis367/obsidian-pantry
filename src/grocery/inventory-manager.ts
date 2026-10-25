@@ -284,10 +284,14 @@ export class InventoryManager extends Events {
 		const files = listInventoryFiles(this.app, this.sink.settings);
 		const next = new Map<string, PageCacheEntry>();
 		for (const file of files) {
-			const page = await readInventoryPage(this.app, file);
-			const previous = this.pages.get(file.path)?.page;
-			if (previous) adoptItemIds(page, previous);
-			next.set(file.path, { file, page });
+			try {
+				const page = await readInventoryPage(this.app, file);
+				const previous = this.pages.get(file.path)?.page;
+				if (previous) adoptItemIds(page, previous);
+				next.set(file.path, { file, page });
+			} catch (err) {
+				console.error(`pantry: failed to read inventory page ${file.path}`, err);
+			}
 		}
 		this.pages = next;
 		this.trigger("changed");

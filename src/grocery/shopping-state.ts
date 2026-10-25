@@ -1,4 +1,5 @@
-import { App, TFile, TFolder } from "obsidian";
+import { App } from "obsidian";
+import { readVaultText, writeVaultText } from "../utils/vault-file";
 import {
 	DEFAULT_SHOPPING_STATE_PATH,
 	PantrySavedState,
@@ -85,24 +86,24 @@ export function parseShoppingState(raw: string): PantrySavedState | null {
 	}
 }
 
-/**
- * Read shopping state from the vault. Returns null when the file does not
- * exist yet (caller may migrate from legacy plugin data).
- */
+/** Read shopping state from the vault. `missing` lets the caller migrate legacy data. */
 export async function readShoppingStateFile(
 	app: App,
 	path: string,
-): Promise<PantrySavedState | null> {
+): Promise<
+	| { status: "missing" }
+	| { status: "unreadable" }
+	| { status: "ok"; state: PantrySavedState }
+> {
 	const resolved = resolveShoppingStatePath(path);
-	const file = app.vault.getAbstractFileByPath(resolved);
-	if (!(file instanceof TFile)) return null;
-	const raw = await app.vault.cachedRead(file);
-	const parsed = parseShoppingState(raw);
+	const read = await readVaultText(app, resolved);
+	if (read.status !== "ok") return read;
+	const parsed = parseShoppingState(read.text);
 	if (!parsed) {
 		console.error(`pantry: failed to parse shopping state at ${resolved}`);
-		return emptyShoppingState();
+		return { status: "ok", state: emptyShoppingState() };
 	}
-	return parsed;
+	return { status: "ok", state: parsed };
 }
 
 /** Write shopping state to the vault, creating parent folders as needed. */
@@ -110,16 +111,9 @@ export async function writeShoppingStateFile(
 	app: App,
 	path: string,
 	state: PantrySavedState,
-): Promise<TFile> {
+): Promise<void> {
 	const resolved = resolveShoppingStatePath(path);
-	const content = serializeShoppingState(state);
-	const existing = app.vault.getAbstractFileByPath(resolved);
-	if (existing instanceof TFile) {
-		await app.vault.modify(existing, content);
-		return existing;
-	}
-	await ensureParentFolder(app, resolved);
-	return app.vault.create(resolved, content);
+	await writeVaultText(app, resolved, serializeShoppingState(state));
 }
 
 /** Vault-relative path with a usable default when the setting is blank. */
@@ -162,16 +156,3 @@ function normalizeStringBoolMap(value: unknown): Record<string, boolean> {
 	return out;
 }
 
-async function ensureParentFolder(app: App, path: string): Promise<void> {
-	const slash = path.lastIndexOf("/");
-	if (slash === -1) return;
-	const dir = path.slice(0, slash);
-	if (!dir) return;
-	const existing = app.vault.getAbstractFileByPath(dir);
-	if (existing instanceof TFolder) return;
-	try {
-		await app.vault.createFolder(dir);
-	} catch {
-		// Folder may already exist or be created concurrently.
-	}
-}

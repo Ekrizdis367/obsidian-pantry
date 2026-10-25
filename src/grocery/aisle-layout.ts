@@ -1,4 +1,5 @@
-import { App, TFile, TFolder } from "obsidian";
+import { App } from "obsidian";
+import { readVaultText, writeVaultText } from "../utils/vault-file";
 import {
 	AisleCategory,
 	AisleLayout,
@@ -21,6 +22,8 @@ interface AisleLayoutFile {
 export interface AisleLayoutRead {
 	/** True when the vault file does not exist yet. */
 	missing: boolean;
+	/** True when the file is present but its bytes could not be read. */
+	unreadable?: boolean;
 	/** Parsed layout. Null when the file exists but is not usable. */
 	layout: AisleLayout | null;
 }
@@ -267,20 +270,17 @@ export async function readAisleLayoutFile(
 	path: string,
 ): Promise<AisleLayoutRead> {
 	const resolved = resolveAisleLayoutPath(path);
-	const file = app.vault.getAbstractFileByPath(resolved);
-	if (!(file instanceof TFile)) return { missing: true, layout: null };
-	try {
-		const raw = await app.vault.read(file);
-		const layout = parseAisleLayout(raw);
-		if (!layout) {
-			console.error(`pantry: failed to parse aisle layout at ${resolved}`);
-			return { missing: false, layout: null };
-		}
-		return { missing: false, layout };
-	} catch (err) {
-		console.error(`pantry: failed to read aisle layout at ${resolved}`, err);
+	const read = await readVaultText(app, resolved);
+	if (read.status === "missing") return { missing: true, layout: null };
+	if (read.status === "unreadable") {
+		return { missing: false, unreadable: true, layout: null };
+	}
+	const layout = parseAisleLayout(read.text);
+	if (!layout) {
+		console.error(`pantry: failed to parse aisle layout at ${resolved}`);
 		return { missing: false, layout: null };
 	}
+	return { missing: false, layout };
 }
 
 /** Write the shared layout to the vault, creating parent folders as needed. */
@@ -288,16 +288,9 @@ export async function writeAisleLayoutFile(
 	app: App,
 	path: string,
 	layout: AisleLayout,
-): Promise<TFile> {
+): Promise<void> {
 	const resolved = resolveAisleLayoutPath(path);
-	const content = serializeAisleLayout(layout);
-	const existing = app.vault.getAbstractFileByPath(resolved);
-	if (existing instanceof TFile) {
-		await app.vault.modify(existing, content);
-		return existing;
-	}
-	await ensureParentFolder(app, resolved);
-	return app.vault.create(resolved, content);
+	await writeVaultText(app, resolved, serializeAisleLayout(layout));
 }
 
 function normalizeShop(value: unknown): AisleShop {
@@ -344,16 +337,3 @@ function normalizeOverrides(value: unknown): CategoryOverride[] {
 	return out;
 }
 
-async function ensureParentFolder(app: App, path: string): Promise<void> {
-	const slash = path.lastIndexOf("/");
-	if (slash === -1) return;
-	const dir = path.slice(0, slash);
-	if (!dir) return;
-	const existing = app.vault.getAbstractFileByPath(dir);
-	if (existing instanceof TFolder) return;
-	try {
-		await app.vault.createFolder(dir);
-	} catch {
-		// Folder may already exist or be created concurrently.
-	}
-}

@@ -61,7 +61,7 @@ export function parseInventoryItemLine(line: string): InventoryItem | null {
 		try {
 			const parsed: unknown = JSON.parse(metaMatch[1] ?? "{}");
 			if (parsed && typeof parsed === "object") {
-				meta = parsed as HiddenItemMeta;
+				meta = parsed;
 			}
 		} catch {
 			// Malformed metadata: fall back to defaults, keep the visible text.

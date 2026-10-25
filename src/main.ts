@@ -107,17 +107,16 @@ export default class PantryPlugin extends Plugin {
 	private aisleLayoutWriteToken: string | null = null;
 	/** Leftover pre-file-based items awaiting import; state-file writes are held until it's cleared. */
 	private pendingLegacyInventory: LegacyInventory | null = null;
+	/** One notice per launch when a vault file exists but cannot be read yet. */
+	private reportedUnreadableFile = false;
 
 	async onload(): Promise<void> {
-		await this.loadSettings();
-		await this.loadShoppingState();
-		// Before anything can rewrite the state file (which would drop `items`).
-		this.pendingLegacyInventory = await readLegacyInventory(
-			this.app,
-			this.settings.inventoryStatePath,
-		);
-		await this.loadInventoryState();
-		await this.loadAisleLayout();
+		try {
+			await this.loadSettings();
+		} catch (err) {
+			console.error("pantry: failed to load settings", err);
+			this.settings = mergeSettings(null);
+		}
 
 		const sink: SaveSink = makeSaveSink(this);
 		this.manager = new GroceryListManager(this.app, sink);
@@ -125,9 +124,9 @@ export default class PantryPlugin extends Plugin {
 		const inventorySink: InventorySaveSink = makeInventorySaveSink(this);
 		this.inventoryManager = new InventoryManager(this.app, inventorySink);
 
-		// Register every view type synchronously, before any awaited work below,
-		// so Obsidian always has a view creator ready if it restores a leaf of
-		// one of these types while reopening the previous workspace layout.
+		// Register every view type synchronously, before any awaited vault
+		// reads below, so a force-quit restore can rebuild an open grocery
+		// list, planner, recipe, or inventory leaf while those reads run.
 		this.registerView(
 			VIEW_TYPE_GROCERY_LIST,
 			(leaf) =>
@@ -289,7 +288,13 @@ export default class PantryPlugin extends Plugin {
 			}),
 		);
 
-		await this.inventoryManager.refresh();
+		try {
+			await this.loadStartupState();
+			await this.inventoryManager.refresh();
+		} catch (err) {
+			console.error("pantry: startup state load failed", err);
+			this.reportUnreadableFile("startup");
+		}
 
 		const refresh = debounce(
 			() => {
@@ -415,6 +420,32 @@ export default class PantryPlugin extends Plugin {
 		this.clearAutoOpenInventoryTimer();
 	}
 
+	/**
+	 * Read vault-backed state after commands and views are registered.
+	 * A file that is still downloading must not reject `onload`, or Obsidian
+	 * disables the plugin on the next force-quit.
+	 */
+	private async loadStartupState(): Promise<void> {
+		await this.loadShoppingState();
+		// Before anything can rewrite the state file (which would drop `items`).
+		this.pendingLegacyInventory = await readLegacyInventory(
+			this.app,
+			this.settings.inventoryStatePath,
+		);
+		await this.loadInventoryState();
+		await this.loadAisleLayout();
+	}
+
+	/** Tell the user once when a saved file cannot be read yet. */
+	private reportUnreadableFile(path: string): void {
+		console.error(`pantry: couldn't read ${path}`);
+		if (this.reportedUnreadableFile) return;
+		this.reportedUnreadableFile = true;
+		new Notice(
+			"Pantry couldn't read a saved file yet. It will load once that file is available.",
+		);
+	}
+
 	async loadSettings(): Promise<void> {
 		const raw = (await this.loadData()) as Partial<PantrySettings> | null;
 		this.settings = mergeSettings(raw);
@@ -440,14 +471,18 @@ export default class PantryPlugin extends Plugin {
 		const legacy = this.settings.state;
 		const hadLegacy = shoppingStateHasContent(legacy);
 		const fromVault = await readShoppingStateFile(this.app, path);
-		if (fromVault) {
+		if (fromVault.status === "unreadable") {
+			this.reportUnreadableFile(path);
+			return;
+		}
+		if (fromVault.status === "ok") {
 			this.settings.state = hadLegacy
-				? mergeShoppingState(fromVault, legacy)
-				: fromVault;
+				? mergeShoppingState(fromVault.state, legacy)
+				: fromVault.state;
 			if (
 				hadLegacy &&
 				serializeShoppingState(this.settings.state) !==
-					serializeShoppingState(fromVault)
+					serializeShoppingState(fromVault.state)
 			) {
 				await this.saveShoppingState();
 			}
@@ -481,7 +516,13 @@ export default class PantryPlugin extends Plugin {
 	}
 
 	private async onShoppingStateFileModified(file: TFile): Promise<void> {
-		const raw = await this.app.vault.cachedRead(file);
+		let raw: string;
+		try {
+			raw = await this.app.vault.cachedRead(file);
+		} catch (err) {
+			console.error(`pantry: failed to read ${file.path}`, err);
+			return;
+		}
 		if (raw === this.shoppingStateWriteToken) return;
 		const parsed = parseShoppingState(raw);
 		if (!parsed) return;
@@ -511,10 +552,14 @@ export default class PantryPlugin extends Plugin {
 		const legacy = this.settings.inventoryState;
 		const hadLegacy = inventoryStateHasContent(legacy);
 		const fromVault = await readInventoryStateFile(this.app, path);
-		if (fromVault) {
+		if (fromVault.status === "unreadable") {
+			this.reportUnreadableFile(path);
+			return;
+		}
+		if (fromVault.status === "ok") {
 			this.settings.inventoryState = hadLegacy
-				? mergeInventoryState(fromVault, legacy)
-				: fromVault;
+				? mergeInventoryState(fromVault.state, legacy)
+				: fromVault.state;
 			// Drop any legacy copy still sitting in data.json.
 			await this.saveSettings();
 			return;
@@ -552,7 +597,13 @@ export default class PantryPlugin extends Plugin {
 	}
 
 	private async onInventoryStateFileModified(file: TFile): Promise<void> {
-		const raw = await this.app.vault.cachedRead(file);
+		let raw: string;
+		try {
+			raw = await this.app.vault.cachedRead(file);
+		} catch (err) {
+			console.error(`pantry: failed to read ${file.path}`, err);
+			return;
+		}
 		if (raw === this.inventoryStateWriteToken) return;
 		const parsed = parseInventoryState(raw);
 		if (!parsed) {
@@ -969,9 +1020,13 @@ export default class PantryPlugin extends Plugin {
 		} else if (read.layout) {
 			this.settings.aisleLayout = read.layout;
 		} else {
-			new Notice(
-				"Pantry: couldn't read the aisle layout file. The grocery list is using the order already loaded.",
-			);
+			if (read.unreadable) {
+				this.reportUnreadableFile(path);
+			} else {
+				new Notice(
+					"Pantry: couldn't read the aisle layout file. The grocery list is using the order already loaded.",
+				);
+			}
 			if (!this.settings.aisleLayout.shops[shopName]) {
 				this.settings.aisleLayout = {
 					shops: {
@@ -1097,7 +1152,13 @@ export default class PantryPlugin extends Plugin {
 	}
 
 	private async onAisleLayoutFileModified(file: TFile): Promise<void> {
-		const raw = await this.app.vault.cachedRead(file);
+		let raw: string;
+		try {
+			raw = await this.app.vault.cachedRead(file);
+		} catch (err) {
+			console.error(`pantry: failed to read ${file.path}`, err);
+			return;
+		}
 		if (raw === this.aisleLayoutWriteToken) return;
 		const parsed = parseAisleLayout(raw);
 		if (!parsed) {

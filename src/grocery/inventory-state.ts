@@ -1,4 +1,5 @@
-import { App, TFile } from "obsidian";
+import { App } from "obsidian";
+import { readVaultText, writeVaultText } from "../utils/vault-file";
 import {
 	DEFAULT_INVENTORY_STATE_PATH,
 	PantrySavedInventoryState,
@@ -116,50 +117,36 @@ export function parseInventoryState(raw: string): PantrySavedInventoryState | nu
 }
 
 /**
- * Read inventory state from the vault. Returns null when the file does not
- * exist yet (caller may migrate from legacy plugin data). Returns empty
- * state (and logs) when the file exists but cannot be parsed.
+ * Read inventory state from the vault. `missing` lets the caller migrate
+ * legacy plugin data. A present but unparseable file returns empty state.
  */
 export async function readInventoryStateFile(
 	app: App,
 	path: string,
-): Promise<PantrySavedInventoryState | null> {
+): Promise<
+	| { status: "missing" }
+	| { status: "unreadable" }
+	| { status: "ok"; state: PantrySavedInventoryState }
+> {
 	const resolved = resolveInventoryStatePath(path);
-	const file = app.vault.getAbstractFileByPath(resolved);
-	if (!(file instanceof TFile)) return null;
-	const raw = await app.vault.cachedRead(file);
-	const parsed = parseInventoryState(raw);
+	const read = await readVaultText(app, resolved);
+	if (read.status !== "ok") return read;
+	const parsed = parseInventoryState(read.text);
 	if (!parsed) {
 		console.error(`pantry: failed to parse inventory state at ${resolved}`);
-		return emptyInventoryState();
+		return { status: "ok", state: emptyInventoryState() };
 	}
-	return parsed;
+	return { status: "ok", state: parsed };
 }
 
-/**
- * Write inventory state to the vault. Creates parent folders and the JSON file
- * if they don't exist.
- */
+/** Write inventory state to the vault, creating parent folders as needed. */
 export async function writeInventoryStateFile(
 	app: App,
 	path: string,
 	state: PantrySavedInventoryState,
 ): Promise<void> {
 	const resolved = resolveInventoryStatePath(path);
-	const parentPath = resolved.substring(0, resolved.lastIndexOf("/"));
-
-	if (parentPath && !app.vault.getAbstractFileByPath(parentPath)) {
-		await app.vault.createFolder(parentPath);
-	}
-
-	const existing = app.vault.getAbstractFileByPath(resolved);
-	const content = serializeInventoryState(state);
-
-	if (existing instanceof TFile) {
-		await app.vault.modify(existing, content);
-	} else {
-		await app.vault.create(resolved, content);
-	}
+	await writeVaultText(app, resolved, serializeInventoryState(state));
 }
 
 /**
@@ -193,13 +180,12 @@ export async function readLegacyInventory(
 	path: string,
 ): Promise<LegacyInventory | null> {
 	const resolved = resolveInventoryStatePath(path);
-	const file = app.vault.getAbstractFileByPath(resolved);
-	if (!(file instanceof TFile)) return null;
+	const read = await readVaultText(app, resolved);
+	if (read.status !== "ok") return null;
 	try {
-		const raw = await app.vault.read(file);
-		const data = JSON.parse(raw.trim() || "{}") as { items?: unknown };
+		const data = JSON.parse(read.text.trim() || "{}") as { items?: unknown };
 		const items = normalizeInventoryItems(data.items);
-		return items.length > 0 ? { items, raw } : null;
+		return items.length > 0 ? { items, raw: read.text } : null;
 	} catch {
 		return null;
 	}
