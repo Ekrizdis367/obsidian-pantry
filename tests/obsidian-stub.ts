@@ -16,6 +16,10 @@ export class TFolder extends TAbstractFile {
 	children: TAbstractFile[] = [];
 }
 
+export class Notice {
+	constructor(public message: string) {}
+}
+
 export class Events {
 	private handlers = new Map<string, Set<Handler>>();
 

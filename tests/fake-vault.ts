@@ -15,6 +15,17 @@ export class FakeVault {
 	private readonly contents = new Map<string, string>();
 	readonly root: TFolder;
 
+	/**
+	 * When false, file caches are empty the way they are before Obsidian
+	 * finishes indexing frontmatter.
+	 */
+	metadataReady = true;
+	/**
+	 * When false, wikilinks do not resolve. Link resolution finishes after
+	 * file caches exist, on the metadata cache `resolved` pass.
+	 */
+	linksReady = true;
+
 	constructor(files: Record<string, string> = {}) {
 		this.root = new TFolder();
 		this.root.path = "/";
@@ -103,8 +114,24 @@ export class FakeVault {
 			},
 			metadataCache: {
 				getFileCache: (file: TFile) => {
+					if (!this.metadataReady) return null;
 					const frontmatter = this.frontmatter(file.path);
 					return frontmatter ? { frontmatter } : null;
+				},
+				getFirstLinkpathDest: (linkpath: string) => {
+					if (!this.linksReady) return null;
+					const target = linkpath.replace(/\.md$/i, "");
+					for (const file of this.entries.values()) {
+						if (!(file instanceof TFile)) continue;
+						if (
+							file.basename === target ||
+							file.path === target ||
+							file.path === `${target}.md`
+						) {
+							return file;
+						}
+					}
+					return null;
 				},
 			},
 		};

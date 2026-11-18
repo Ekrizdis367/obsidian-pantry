@@ -1,4 +1,4 @@
-import { App, CachedMetadata, TFile } from "obsidian";
+import { App, CachedMetadata, TFile, TFolder } from "obsidian";
 import { PantrySettings, RECIPE_FRONTMATTER } from "../settings";
 import { fileInFolders, listMarkdownFilesInRecipeFolders } from "../utils/vault-files";
 import { RecipeIngredient } from "../types";
@@ -69,20 +69,80 @@ export function isRecipeSelected(
 	return false;
 }
 
+/**
+ * Result of reading the selection property across the recipe folders.
+ * `files` omits anything whose cache is missing. The flags say whether that
+ * omission is a real "not selected" or just the cache not being ready yet.
+ */
+export interface SelectedRecipeScan {
+	files: TFile[];
+	/** A configured recipe folder is not in the vault yet. */
+	missingFolder: boolean;
+	/** A file in scope has no metadata cache yet. */
+	uncachedFile: boolean;
+	/** At least one markdown file was in scope. */
+	sawFile: boolean;
+	/** No recipe folders are configured, so the scan covered the whole vault. */
+	wholeVault: boolean;
+}
+
 /** Find all markdown files in the configured recipe folders that are flagged for the week. */
 export function findSelectedRecipes(
 	app: App,
 	settings: PantrySettings,
 ): TFile[] {
-	const selected: TFile[] = [];
-	for (const file of listMarkdownFilesInRecipeFolders(app, settings)) {
-		if (!fileInRecipeFolders(file, settings.recipeFolders)) continue;
-		const cache = app.metadataCache.getFileCache(file);
-		if (isRecipeSelected(cache, settings.selectionProperty)) {
-			selected.push(file);
+	return scanSelectedRecipes(app, settings).files;
+}
+
+/**
+ * Read the selection property, and report whether a missing selection is
+ * trustworthy. A null file cache means the file is not indexed yet, which is
+ * not the same as the recipe being unselected.
+ */
+export function scanSelectedRecipes(
+	app: App,
+	settings: PantrySettings,
+): SelectedRecipeScan {
+	const cleaned = settings.recipeFolders
+		.map((folder) => folder.replace(/\/+$/, "").trim())
+		.filter(Boolean);
+	if (cleaned.length > 0) {
+		for (const folderPath of cleaned) {
+			const folder = app.vault.getAbstractFileByPath(folderPath);
+			if (!(folder instanceof TFolder)) {
+				return {
+					files: [],
+					missingFolder: true,
+					uncachedFile: false,
+					sawFile: false,
+					wholeVault: false,
+				};
+			}
 		}
 	}
-	return selected;
+
+	const files: TFile[] = [];
+	let uncachedFile = false;
+	let sawFile = false;
+	for (const file of listMarkdownFilesInRecipeFolders(app, settings)) {
+		if (!fileInRecipeFolders(file, settings.recipeFolders)) continue;
+		sawFile = true;
+		const cache = app.metadataCache.getFileCache(file);
+		if (!cache) {
+			uncachedFile = true;
+			continue;
+		}
+		if (isRecipeSelected(cache, settings.selectionProperty)) {
+			files.push(file);
+		}
+	}
+	return {
+		files,
+		missingFolder: false,
+		uncachedFile,
+		sawFile,
+		wholeVault: cleaned.length === 0,
+	};
 }
 
 /**

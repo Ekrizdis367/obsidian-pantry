@@ -318,6 +318,12 @@ export default class PantryPlugin extends Plugin {
 			}),
 		);
 		this.registerEvent(
+			this.app.metadataCache.on("resolved", () => {
+				this.manager.markCacheResolved();
+				void this.manager.refresh();
+			}),
+		);
+		this.registerEvent(
 			this.app.vault.on("delete", (file) => {
 				if (this.isShoppingStateFile(file)) {
 					this.settings.state = emptyShoppingState();

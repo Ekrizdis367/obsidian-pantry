@@ -7,6 +7,8 @@ import {
 import {
 	findSelectedRecipes,
 	parseRecipeFile,
+	scanSelectedRecipes,
+	SelectedRecipeScan,
 } from "../parser/recipe";
 import {
 	parseMealPlanContents,
@@ -51,6 +53,16 @@ export class GroceryListManager extends Events {
 	private individualRecipes: TFile[] = [];
 	private plannedRecipes: PlannedRecipeEntry[] = [];
 	private rebuildPromise: Promise<void> | null = null;
+	/** Set when a refresh arrives while one is already rebuilding. */
+	private rebuildAgain = false;
+	/** The metadata cache has finished a full resolve pass at least once. */
+	private cacheResolved = false;
+	/**
+	 * The last recipe scan saw every folder and file cache it needed.
+	 * Checked-key pruning is skipped until this is true, so a cold start
+	 * cannot delete recipe checks it has not loaded yet.
+	 */
+	private recipeScanAuthoritative = false;
 
 	constructor(
 		private readonly app: App,
@@ -78,95 +90,142 @@ export class GroceryListManager extends Events {
 	}
 
 	/**
+	 * Record that the metadata cache has finished resolving links. A meal-plan
+	 * wikilink that still fails after this is a real missing note.
+	 */
+	markCacheResolved(): void {
+		this.cacheResolved = true;
+	}
+
+	/**
 	 * Rebuild the grocery list from selected recipes and one-off items.
-	 * Concurrent calls coalesce so spamming the refresh button is safe.
+	 * A call that arrives while a rebuild is running queues one more pass,
+	 * so a scan that started before the cache was ready does not swallow
+	 * the scan that runs after it.
 	 */
 	async refresh(): Promise<void> {
-		if (this.rebuildPromise) return this.rebuildPromise;
-		this.rebuildPromise = (async () => {
-			try {
-				const fmFiles = findSelectedRecipes(
-					this.app,
-					this.sink.settings,
+		if (this.rebuildPromise) {
+			this.rebuildAgain = true;
+			return this.rebuildPromise;
+		}
+		this.rebuildPromise = this.drainRebuilds();
+		try {
+			await this.rebuildPromise;
+		} finally {
+			this.rebuildPromise = null;
+		}
+	}
+
+	private async drainRebuilds(): Promise<void> {
+		do {
+			this.rebuildAgain = false;
+			await this.rebuildOnce();
+		} while (this.rebuildAgain);
+	}
+
+	private async rebuildOnce(): Promise<void> {
+		const scan = scanSelectedRecipes(this.app, this.sink.settings);
+		// Captured before any await. A resolve event that lands mid-read
+		// must not make this already-taken scan look complete.
+		const cacheResolved = this.cacheResolved;
+		const selectionReady = this.selectionIsAuthoritative(scan, cacheResolved);
+		const plan = await this.readMealPlanOccurrences(cacheResolved);
+		const authoritative = selectionReady && plan.authoritative;
+
+		if (authoritative) {
+			const fmFiles = scan.files;
+
+			// Count how many times each recipe appears in the meal plan so
+			// duplicates contribute their ingredients once per appearance.
+			const planCount = new Map<string, number>();
+			const fileByPath = new Map<string, TFile>();
+			for (const occ of plan.occurrences) {
+				if (!occ.file) continue;
+				planCount.set(
+					occ.file.path,
+					(planCount.get(occ.file.path) ?? 0) + 1,
 				);
-				const plan = await this.readMealPlanOccurrences();
+				fileByPath.set(occ.file.path, occ.file);
+			}
 
-				// Count how many times each recipe appears in the meal plan so
-				// duplicates contribute their ingredients once per appearance.
-				const planCount = new Map<string, number>();
-				const fileByPath = new Map<string, TFile>();
-				for (const occ of plan.occurrences) {
-					if (!occ.file) continue;
-					planCount.set(
-						occ.file.path,
-						(planCount.get(occ.file.path) ?? 0) + 1,
+			// Plan wins over the frontmatter flag: a recipe in the plan is
+			// counted by its plan appearances; frontmatter-only recipes
+			// contribute a single time.
+			const targets: Array<{ file: TFile; count: number }> = [];
+			for (const [path, count] of planCount) {
+				const file = fileByPath.get(path);
+				if (file) targets.push({ file, count });
+			}
+			for (const file of fmFiles) {
+				if (!planCount.has(file.path)) {
+					targets.push({ file, count: 1 });
+				}
+			}
+
+			const allIngredients: RecipeIngredient[] = [];
+			for (const { file, count } of targets) {
+				try {
+					const parsed = await parseRecipeFile(
+						this.app,
+						file,
+						this.sink.settings,
 					);
-					fileByPath.set(occ.file.path, occ.file);
-				}
-
-				// Plan wins over the frontmatter flag: a recipe in the plan is
-				// counted by its plan appearances; frontmatter-only recipes
-				// contribute a single time.
-				const targets: Array<{ file: TFile; count: number }> = [];
-				for (const [path, count] of planCount) {
-					const file = fileByPath.get(path);
-					if (file) targets.push({ file, count });
-				}
-				for (const file of fmFiles) {
-					if (!planCount.has(file.path)) {
-						targets.push({ file, count: 1 });
+					for (let i = 0; i < count; i++) {
+						allIngredients.push(...parsed);
 					}
+				} catch (err) {
+					console.error(
+						`pantry: failed to parse ${file.path}`,
+						err,
+					);
 				}
+			}
+			this.recipeIngredients = allIngredients;
 
-				const allIngredients: RecipeIngredient[] = [];
-				for (const { file, count } of targets) {
-					try {
-						const parsed = await parseRecipeFile(
-							this.app,
-							file,
-							this.sink.settings,
-						);
-						for (let i = 0; i < count; i++) {
-							allIngredients.push(...parsed);
-						}
-					} catch (err) {
-						console.error(
-							`pantry: failed to parse ${file.path}`,
-							err,
-						);
-					}
-				}
-				this.recipeIngredients = allIngredients;
+			const planned: PlannedRecipeEntry[] = [];
+			for (const [path, count] of planCount) {
+				const file = fileByPath.get(path);
+				if (file) planned.push({ file, count });
+			}
+			planned.sort((a, b) =>
+				a.file.basename.localeCompare(b.file.basename, undefined, {
+					sensitivity: "base",
+				}),
+			);
 
-				const planned: PlannedRecipeEntry[] = [];
-				for (const [path, count] of planCount) {
-					const file = fileByPath.get(path);
-					if (file) planned.push({ file, count });
-				}
-				planned.sort((a, b) =>
-					a.file.basename.localeCompare(b.file.basename, undefined, {
+			const individual = fmFiles
+				.filter((file) => !planCount.has(file.path))
+				.sort((a, b) =>
+					a.basename.localeCompare(b.basename, undefined, {
 						sensitivity: "base",
 					}),
 				);
 
-				const individual = fmFiles
-					.filter((file) => !planCount.has(file.path))
-					.sort((a, b) =>
-						a.basename.localeCompare(b.basename, undefined, {
-							sensitivity: "base",
-						}),
-					);
+			this.plannedRecipes = planned;
+			this.individualRecipes = individual;
+		}
 
-				this.plannedRecipes = planned;
-				this.individualRecipes = individual;
-				this.rebuildItems();
-				await this.pruneStaleCheckedKeys();
-			} finally {
-				this.rebuildPromise = null;
-			}
-			this.trigger("changed");
-		})();
-		return this.rebuildPromise;
+		this.recipeScanAuthoritative = authoritative;
+		this.rebuildItems();
+		await this.pruneStaleCheckedKeys();
+		this.trigger("changed");
+	}
+
+	/**
+	 * A selection scan can be saved only when every folder it needed was
+	 * present and every file in scope had a cache. An empty whole-vault
+	 * result before the first resolve is the vault still loading, not an
+	 * empty grocery list.
+	 */
+	private selectionIsAuthoritative(
+		scan: SelectedRecipeScan,
+		cacheResolved: boolean,
+	): boolean {
+		if (scan.uncachedFile) return false;
+		if (scan.missingFolder || (scan.wholeVault && !scan.sawFile)) {
+			return cacheResolved;
+		}
+		return true;
 	}
 
 	/** The configured meal-plan note, or null when unset/missing. */
@@ -181,29 +240,45 @@ export class GroceryListManager extends Events {
 	 * Read the configured meal-plan note into recipe occurrences. Returns an
 	 * empty result when the feature is disabled or the note is missing.
 	 */
-	async readMealPlanOccurrences(): Promise<{
+	async readMealPlanOccurrences(cacheResolved = this.cacheResolved): Promise<{
 		occurrences: PlanOccurrence[];
 		unresolved: string[];
+		/** False when a failed link or a missing note may just be a cold cache. */
+		authoritative: boolean;
 	}> {
 		if (!this.sink.settings.mealPlanEnabled) {
-			return { occurrences: [], unresolved: [] };
+			return { occurrences: [], unresolved: [], authoritative: true };
+		}
+		const path = this.sink.settings.mealPlanNotePath.trim();
+		if (!path) {
+			return { occurrences: [], unresolved: [], authoritative: true };
 		}
 		const file = this.getMealPlanFile();
-		if (!file) return { occurrences: [], unresolved: [] };
+		if (!file) {
+			return {
+				occurrences: [],
+				unresolved: [],
+				authoritative: cacheResolved,
+			};
+		}
 		try {
 			const contents = await this.app.vault.cachedRead(file);
-			return parseMealPlanContents(
+			const parsed = parseMealPlanContents(
 				this.app,
 				file.path,
 				contents,
 				this.sink.settings,
 			);
+			return {
+				...parsed,
+				authoritative: parsed.unresolved.length === 0 || cacheResolved,
+			};
 		} catch (err) {
 			console.error(
 				`pantry: failed to read meal plan ${file.path}`,
 				err,
 			);
-			return { occurrences: [], unresolved: [] };
+			return { occurrences: [], unresolved: [], authoritative: false };
 		}
 	}
 
@@ -447,6 +522,7 @@ export class GroceryListManager extends Events {
 	}
 
 	private async pruneStaleCheckedKeys(): Promise<void> {
+		if (!this.recipeScanAuthoritative) return;
 		const live = new Set(this.items.map((i) => i.key));
 		const map = this.sink.settings.state.checkedKeys;
 		let changed = false;
